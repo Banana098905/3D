@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MASSIVE ENGINE 2.0 — ES Module Example</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,sans-serif;background:#08111f;color:#e5eefb}body{margin:0;padding:22px;max-width:980px;margin-inline:auto}h1{font-size:1.35rem}p{color:#a9bad1;line-height:1.65}.card{border:1px solid #263953;background:#101b2b;border-radius:12px;padding:14px}canvas{width:100%;height:420px;display:block;background:#08111d;border-radius:8px;touch-action:none}.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}button{border:1px solid #38506e;background:#1b2d45;color:#eff6ff;border-radius:7px;padding:8px 11px;cursor:pointer}.stats{font:12px ui-monospace,monospace;color:#9cecff;overflow-wrap:anywhere;margin-top:10px}.note{font-size:12px}code{color:#9cecff}
+</style></head><body>
+<h1>MASSIVE ENGINE 2.0 — ES Module integration</h1>
+<p>この例は <code>import</code> を使うネイティブESモジュール版です。<code>file://</code> ではモジュール読み込みが制限される場合があるため、GitHub PagesなどのHTTPS、またはローカルHTTPサーバーで開いてください。</p>
+<section class="card"><canvas id="world" aria-label="MASSIVE ENGINE 3D simulation"></canvas><div id="stats" class="stats">初期化中…</div><div class="row"><button id="toggle">一時停止</button><button id="reset">リセット</button><button id="dispose">破棄</button><button id="recreate">再作成</button></div></section>
+<p id="status" class="note">WebGL 2対応ブラウザが必要です。</p>
+<script type="module">
+import MassiveEngine, { create, isSupported, version } from '../massive-engine.mjs';
+const canvas = document.querySelector('#world');
+const stats = document.querySelector('#stats');
+const status = document.querySelector('#status');
+let engine = null;
+function mount() {
+  if (engine) return;
+  try {
+    if (!isSupported(canvas)) throw new Error('このブラウザ／端末ではWebGL 2を利用できません。');
+    engine = create({ canvas, count: 10000, gridCellSize: 0.60,
+      onStats(s) { stats.textContent = `v${version} · ${MassiveEngine.version} · FPS ${s.fps.toFixed(1)} · step ${s.stepMs.toFixed(2)} ms · candidates ${s.candidatePairs.toLocaleString()}`; },
+      onError(e) { status.textContent = `エンジンエラー: ${e.message}`; }
+    });
+    status.textContent = '起動しました。ドラッグで視点回転、スクロールでズーム。';
+  } catch (e) { status.textContent = e.message; }
+}
+mount();
+document.querySelector('#toggle').addEventListener('click', e => {
+  if (!engine) return;
+  if (engine.running) { engine.stop(); e.currentTarget.textContent = '再開'; }
+  else { engine.start(); e.currentTarget.textContent = '一時停止'; }
+});
+document.querySelector('#reset').addEventListener('click', () => engine?.reset());
+document.querySelector('#dispose').addEventListener('click', () => { engine?.dispose(); engine = null; stats.textContent = '破棄済み'; status.textContent = 'エンジンのGPUリソースとイベントリスナーを解放しました。'; });
+document.querySelector('#recreate').addEventListener('click', () => { mount(); });
+window.addEventListener('pagehide', () => engine?.dispose(), { once: true });
+</script></body></html>

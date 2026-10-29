@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MASSIVE ENGINE — External Site Embed</title>
+<style>body{font:16px/1.6 system-ui,sans-serif;max-width:900px;margin:2rem auto;padding:0 1rem;color:#e7eef8;background:#091321}canvas{display:block;width:100%;height:440px;background:#0b1728;border-radius:12px;touch-action:none}.muted{color:#a9bad1}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#101d30;padding:1rem;border-radius:8px}code{color:#9cecff}</style></head>
+<body><h1>External website embed test</h1><p class="muted">公開後、下のスクリプトURLを自分のGitHub Pages URLに置き換えれば、別サイトから読み込めます。</p>
+<canvas id="massive-world" aria-label="Embedded MASSIVE ENGINE scene"></canvas><p id="status" class="muted">エンジン読込待ち…</p>
+<pre><code>&lt;script src="https://YOUR-USERNAME.github.io/YOUR-REPOSITORY/massive-engine.js"&gt;&lt;/script&gt;
+&lt;script&gt;
+  const engine = MassiveEngine.create({
+    canvas: document.querySelector('#massive-world'),
+    count: 10000,
+    gridCellSize: 0.60
+  });
+&lt;/script&gt;</code></pre>
+<!-- IMPORTANT: Replace the placeholder with your published HTTPS URL. -->
+<script src="https://YOUR-USERNAME.github.io/YOUR-REPOSITORY/massive-engine.js" onerror="document.getElementById('status').textContent='URLを公開済みのmassive-engine.jsへ置き換えてください。'"></script>
+<script>
+if (window.MassiveEngine) {
+ const canvas=document.getElementById('massive-world');
+ if (MassiveEngine.isSupported(canvas)) {
+  const engine=MassiveEngine.create({canvas,count:10000,gridCellSize:0.60,onStats(s){document.getElementById('status').textContent=`${MassiveEngine.version} · FPS ${s.fps.toFixed(1)} · Step ${s.stepMs.toFixed(2)} ms`;},onError(e){document.getElementById('status').textContent=e.message;}});
+  window.addEventListener('pagehide',()=>engine.dispose(),{once:true});
+ }
+}
+</script></body></html>
