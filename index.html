@@ -1,76 +1,72 @@
 <!doctype html>
-<html lang="ja">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>MASSIVE ENGINE 1.8 — Embeddable Core</title>
-<style>
-:root{color-scheme:dark;--bg:#080d17;--panel:#101827;--line:#26364d;--text:#edf4ff;--muted:#9bb0ca;--cyan:#60ddff;--green:#69e6ad;--orange:#ffc875}
-*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 60% -20%,#173357 0,transparent 48%),var(--bg);color:var(--text);font:14px/1.55 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}header{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:16px 22px;border-bottom:1px solid #1c2b40}.brand{display:flex;align-items:center;gap:12px}.logo{display:grid;place-items:center;width:38px;height:38px;border-radius:11px;color:#07121b;background:linear-gradient(135deg,var(--cyan),#7e9dff);font-size:18px;font-weight:900}.brand h1{font-size:16px;letter-spacing:.12em;margin:0}.sub,.muted{color:var(--muted)}.pill{border:1px solid #285847;color:var(--green);border-radius:999px;padding:5px 9px;font-size:11px}.layout{max-width:1400px;margin:auto;padding:20px;display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:16px}.card{background:linear-gradient(180deg,#121c2c,#0d1421);border:1px solid var(--line);border-radius:15px;overflow:hidden}.stageHead,.stageFoot{padding:12px 15px;display:flex;justify-content:space-between;gap:12px;align-items:center}.stageHead{border-bottom:1px solid #1d2c41}.stageFoot{border-top:1px solid #1d2c41;flex-wrap:wrap;color:var(--muted);font-size:12px}canvas{display:block;width:100%;height:min(66vh,680px);min-height:350px;background:#091322;touch-action:none}.side{display:flex;flex-direction:column;gap:12px}.panel{padding:15px}.panel h2{font-size:12px;letter-spacing:.08em;color:#cfe6ff;margin:0 0 12px}.row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:10px 0}.big{font-size:22px;font-weight:750;font-variant-numeric:tabular-nums}input[type=range]{width:100%;accent-color:var(--cyan)}button,select{font:inherit;color:var(--text);border:1px solid #344964;background:#1b2a40;border-radius:8px;padding:8px 10px}button{cursor:pointer}button:hover{border-color:var(--cyan)}button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}.primary{background:#147b99;border-color:#24b8dc}.buttons{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.metrics{display:grid;grid-template-columns:1fr 1fr;gap:7px}.metric{background:#0b1320;border:1px solid #223249;border-radius:9px;padding:10px;min-width:0}.metric label{display:block;color:var(--muted);font-size:11px}.metric strong{font-size:19px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.status{font-size:12px;color:#bcd0e9;min-height:38px;line-height:1.6}.note{font-size:12px;color:var(--muted);line-height:1.65}.code{white-space:pre-wrap;overflow-wrap:anywhere;background:#070d16;border:1px solid #243348;border-radius:9px;padding:10px;font:11px/1.6 ui-monospace,monospace;color:#a8e8ff}.footer{max-width:1400px;margin:auto;padding:0 20px 24px;color:#7890ac;font-size:11px}@media(max-width:930px){.layout{grid-template-columns:1fr}.side{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}canvas{height:54vh;min-height:320px}}@media(max-width:600px){header{padding:12px}.pill{display:none}.layout{padding:10px}.side{display:flex}.stageHead{align-items:flex-start;flex-direction:column}canvas{min-height:300px}.footer{padding:0 10px 16px}}
-</style>
-</head>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MASSIVE ENGINE 1.0</title><link rel="stylesheet" href="examples/assets/demo.css"></head>
 <body>
-<header><div class="brand"><div class="logo">M</div><div><h1>MASSIVE ENGINE</h1><div class="sub">Embeddable WebGL 2 Core · Prototype 1.9</div></div></div><div class="pill">Three.js不使用 · 外部依存なし</div></header>
+<header><h1>MASSIVE ENGINE 1.0 <span class="note" style="letter-spacing:0">依存なし・WebGL 2 汎用3Dエンジン</span></h1>
+<nav><a class="on" href="index.html">ホーム/粒子</a><a href="examples/basic-scene.html">基本3Dシーン</a><a href="examples/physics-demo.html">衝突・物理</a><a href="examples/resource-demo.html">リソース管理</a><a href="examples/voxel-demo.html">ボクセル統合</a><a href="examples/embed-example.html">埋め込み(2台)</a><a href="examples/module-example.html">ESM</a><a href="bench/index.html">ベンチマーク</a></nav></header>
 <div class="layout">
-<section class="card"><div class="stageHead"><div><b>LIVE 3D SIMULATION</b><div class="sub">ドラッグで視点回転・スクロールでズーム</div></div><div class="sub">WebGL 2 / Instanced Rendering</div></div><canvas id="world" aria-label="大量の物体が衝突する3Dシミュレーション"></canvas><div class="stageFoot"><span>物体数：<b id="bodyCount">2,500</b></span><div><button id="pause">一時停止</button> <button id="reset">リセット</button></div></div></section>
+<section class="card"><div class="head"><div><b>粒子シミュレーション（試作版2.0 互換モード）</b><div class="note" style="margin:0">ドラッグ=視点回転 / ホイール=ズーム</div></div><span class="note">WebGL 2 · インスタンス描画 · 空間分割</span></div>
+<canvas id="world" aria-label="大量の物体が衝突する3Dシミュレーション"></canvas>
+<div class="foot"><span>物体数：<b id="bodyCount">2,500</b></span><div class="btns"><button id="pause">一時停止</button><button id="reset">リセット</button></div></div></section>
 <aside class="side">
-<section class="card panel"><h2>ENGINE CONTROL</h2><div class="row"><label for="count" class="muted">物体数</label><strong id="countLabel" class="big">2,500</strong></div><input id="count" type="range" min="100" max="100000" step="100" value="2500" aria-label="物体数"><div class="buttons" style="margin-top:8px"><button data-count="1000">1,000</button><button data-count="10000">10,000</button><button data-count="100000">100,000</button></div><div class="row"><label for="cell" class="muted">セル幅</label><select id="cell"><option value="0.6" selected>0.60（推奨）</option><option value="0.65">0.65</option><option value="0.75">0.75</option></select></div><div class="row"><label for="rotation" class="muted">立方体の回転</label><input id="rotation" type="checkbox" checked></div><button id="bench" class="primary" style="width:100%;margin-top:6px">10秒ベンチマーク</button><p id="status" class="status">初期化中…</p></section>
-<section class="card panel"><h2>LIVE METRICS</h2><div class="metrics"><div class="metric"><label>平均FPS</label><strong id="fps">—</strong></div><div class="metric"><label>フレーム間隔</label><strong id="frame">—</strong><small> ms</small></div><div class="metric"><label>シミュレーション</label><strong id="step">—</strong><small> ms</small></div><div class="metric"><label>衝突候補</label><strong id="pairs">—</strong></div><div class="metric"><label>重なり検出</label><strong id="hits">—</strong></div><div class="metric"><label>GPU転送呼び出し</label><strong id="upload">—</strong><small> ms</small></div></div><p class="note">測定値はブラウザ・端末・画面更新頻度に依存します。シミュレーション時間が16.67 ms未満でも、描画込み60 FPSを保証するものではありません。</p></section>
-<section class="card panel"><h2>EMBED API</h2><p class="note">既存ページに canvas とスクリプトを追加して利用する設計です。HTTPSまたはローカルHTTPサーバーで配信してください。</p><div class="code">&lt;canvas id="world"&gt;&lt;/canvas&gt;
+<section class="card panel"><h2>ENGINE CONTROL</h2>
+<div class="row"><label for="count">物体数</label><strong id="countLabel">2,500</strong></div>
+<input id="count" type="range" min="100" max="100000" step="100" value="2500" aria-label="物体数">
+<div class="btns" style="margin-top:8px"><button data-count="1000">1,000</button><button data-count="10000">10,000</button><button data-count="100000">100,000</button></div>
+<div class="row"><label for="cell">セル幅</label><select id="cell"><option value="0.6" selected>0.60（試作での推奨）</option><option value="0.65">0.65</option><option value="0.75">0.75</option></select></div>
+<div class="row"><label for="rotation">立方体の回転</label><input id="rotation" type="checkbox" checked></div>
+<div class="row"><label for="quality">品質</label><select id="quality"><option>low</option><option>medium</option><option selected>high</option><option>ultra</option></select></div>
+<div class="row"><label for="adaptive">自動品質調整</label><input id="adaptive" type="checkbox"></div>
+<button id="bench" class="primary" style="width:100%;margin-top:6px">10秒ベンチマーク</button><p id="status" class="status">初期化中…</p></section>
+<section class="card panel"><h2>LIVE METRICS</h2><div class="metrics" id="metrics"></div>
+<p class="note">測定値はブラウザ・端末・画面更新頻度に依存します。CPU処理時間はGPU処理時間ではありません。GPU時間は対応環境のみ表示し、非対応なら「—」です。詳細な計測は bench/ を使ってください。</p></section>
+<section class="card panel"><h2>EMBED API</h2><pre class="code">&lt;canvas id="world"&gt;&lt;/canvas&gt;
 &lt;script src="massive-engine.js"&gt;&lt;/script&gt;
 &lt;script&gt;
-  const engine = new MassiveEngine.Engine({
+  const engine = MassiveEngine.create({
     canvas: document.querySelector('#world'),
-    count: 10000,
+    count: 10000,        // 互換モード（粒子）
     gridCellSize: 0.60
   });
-&lt;/script&gt;</div><p class="note">API：start() / stop() / setCount(n) / setSpeed(n) / setGridCellSize(n) / getStats() / dispose()</p></section>
+&lt;/script&gt;</pre><p class="note">count を省略すると空のシーンから始まり、addBox() / addSphere() / InstancedMesh などで自由に構成できます。詳細は docs/API.md。</p></section>
 </aside></div>
-<div class="footer">Prototype 1.9：埋め込みAPIと基準シミュレーションを分離した概念実証。ライブラリ互換性・複数ブラウザ・長時間安定性は今後の検証対象。</div>
+<div class="foot-note">MASSIVE ENGINE 1.0.0 — 実装範囲と制限は docs/FEATURES.md と docs/LIMITATIONS.md を参照してください。</div>
 <script src="./massive-engine.js"></script>
 <script>
 (() => {
-  const $ = id => document.getElementById(id);
-  let engine, bench = null, fpsSamples = [], lastMetricsStamp = 0;
+  const $ = id => document.getElementById(id), f = (v, d = 2) => (v == null || !isFinite(v)) ? '—' : Number(v).toFixed(d), n = v => Math.round(v).toLocaleString('en-US');
+  let engine, bench = null;
+  const setStatus = (t, bad) => { $('status').textContent = t; $('status').className = 'status' + (bad ? ' err' : ''); };
   try {
-    engine = new MassiveEngine.Engine({ canvas: $('world'), count: 2500, gridCellSize: 0.60, onStats: stats => {
-      $('fps').textContent = stats.fps.toFixed(1);
-      $('frame').textContent = stats.frameMs.toFixed(2);
-      $('step').textContent = stats.stepMs.toFixed(2);
-      $('pairs').textContent = stats.candidatePairs.toLocaleString('en-US');
-      $('hits').textContent = stats.overlaps.toLocaleString('en-US');
-      $('upload').textContent = (stats.uploadMs || 0).toFixed(2);
-      $('bodyCount').textContent = stats.count.toLocaleString('en-US');
-      if (bench) {
-        bench.frames++; bench.elapsed += stats.frameMs; bench.stepSum += stats.stepMs; bench.stepMax = Math.max(bench.stepMax, stats.stepMs);
-        bench.frameTimes.push(stats.frameMs); bench.uploadSum += stats.uploadMs || 0; bench.pairsSum += stats.candidatePairs; bench.hitsSum += stats.overlaps;
+    engine = MassiveEngine.create({ canvas: $('world'), count: 2500, gridCellSize: 0.60, onError: e => setStatus('エラー: ' + e.message, true),
+      onStats: s => {
+        if (!bench) return;
+        bench.frames++; bench.elapsed += s.frameMs; bench.step.push(s.stepMs); bench.cpu.push(s.cpuMs); bench.frame.push(s.frameMs); bench.pairs += s.candidatePairs; bench.hits += s.overlaps; bench.dc = s.drawCalls; bench.tri = s.triangles; if (s.gpuMs != null) bench.gpu.push(s.gpuMs);
         if (bench.elapsed >= 10000) finishBench();
-      }
-    }});
-  } catch (error) { $('status').textContent = '初期化に失敗：' + error.message; $('status').style.color = '#ff9ca8'; return; }
-  $('count').addEventListener('input', e => { engine.setCount(Number(e.target.value)); $('countLabel').textContent = engine.count.toLocaleString('en-US'); $('bodyCount').textContent = engine.count.toLocaleString('en-US'); });
-  document.querySelectorAll('[data-count]').forEach(button => button.addEventListener('click', () => { engine.setCount(Number(button.dataset.count)); $('count').value = engine.count; $('countLabel').textContent = engine.count.toLocaleString('en-US'); $('bodyCount').textContent = engine.count.toLocaleString('en-US'); }));
+      } });
+  } catch (e) { setStatus('初期化に失敗：' + e.message, true); return; }
+  window.__demo = { engine };
+  const syncCount = () => { const c = engine.count.toLocaleString('en-US'); $('countLabel').textContent = c; $('bodyCount').textContent = c; $('count').value = engine.count; };
+  $('count').addEventListener('input', e => { engine.setCount(Number(e.target.value)); syncCount(); });
+  document.querySelectorAll('[data-count]').forEach(b => b.addEventListener('click', () => { engine.setCount(Number(b.dataset.count)); syncCount(); }));
   $('cell').addEventListener('change', e => { engine.setGridCellSize(Number(e.target.value)); engine.reset(); });
   $('rotation').addEventListener('change', e => { engine.cubeRotation = e.target.checked; });
-  $('pause').addEventListener('click', () => { if (engine.running) { engine.stop(); $('pause').textContent = '再開'; } else { engine.start(); $('pause').textContent = '一時停止'; } });
-  $('reset').addEventListener('click', () => { engine.reset(); $('status').textContent = '初期配置と速度をリセットしました。'; });
+  $('quality').addEventListener('change', e => engine.setQuality(e.target.value));
+  $('adaptive').addEventListener('change', e => engine.setOptions({ adaptiveQuality: e.target.checked }));
+  $('pause').addEventListener('click', () => { if (engine.running) { engine.stop(); $('pause').textContent = '再開'; } else { engine.resume(); $('pause').textContent = '一時停止'; } });
+  $('reset').addEventListener('click', () => { engine.reset(); setStatus('初期配置と速度をリセットしました。'); });
   $('bench').addEventListener('click', () => {
-    if (bench) return;
-    engine.reset(); if (!engine.running) engine.start();
-    bench = { elapsed: 0, frames: 0, stepSum: 0, stepMax: 0, uploadSum: 0, pairsSum: 0, hitsSum: 0, frameTimes: [] };
-    $('bench').disabled = true; $('status').textContent = '計測中：タブを表示したまま、約10秒間計測します。';
+    if (bench) return; engine.reset(); if (!engine.running) engine.resume();
+    bench = { elapsed: 0, frames: 0, step: [], cpu: [], frame: [], gpu: [], pairs: 0, hits: 0, dc: 0, tri: 0 }; $('bench').disabled = true; setStatus('計測中：タブを表示したまま、約10秒間計測します。');
   });
+  const p = (a, q) => { if (!a.length) return 0; const s = a.slice().sort((x, y) => x - y); return s[Math.min(s.length - 1, Math.ceil(s.length * q) - 1)]; }, avg = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0;
   function finishBench() {
-    if (!bench) return;
-    const b = bench; bench = null; const sorted = b.frameTimes.slice().sort((a,c)=>a-c); const p95 = sorted[Math.min(sorted.length-1, Math.ceil(sorted.length*.95)-1)] || 0;
-    const actualSec = b.elapsed / 1000, fps = b.frames / Math.max(.001, actualSec);
-    $('status').textContent = `完了：${engine.count.toLocaleString()}個 / 計測窓 ${actualSec.toFixed(2)}秒 / 平均FPS ${fps.toFixed(1)} / ${b.frames}フレーム / フレーム間隔P95 ${p95.toFixed(2)} ms / 最大フレーム間隔 ${Math.max(...b.frameTimes).toFixed(2)} ms / シミュレーション平均 ${(b.stepSum/b.frames).toFixed(2)} ms (最大 ${b.stepMax.toFixed(2)} ms) / GPU転送呼び出し平均 ${(b.uploadSum/b.frames).toFixed(3)} ms / 候補ペア平均 ${Math.round(b.pairsSum/b.frames).toLocaleString()} / 重なり平均 ${Math.round(b.hitsSum/b.frames).toLocaleString()}。端末依存の参考値です。`;
-    $('bench').disabled = false;
+    const b = bench; bench = null; $('bench').disabled = false; const sec = b.elapsed / 1000;
+    setStatus(`完了：${engine.count.toLocaleString()}個 / 計測窓 ${sec.toFixed(2)}秒 / 平均FPS ${f(b.frames / sec, 1)} / フレーム間隔 P95 ${f(p(b.frame, .95))} ms・最大 ${f(Math.max(...b.frame))} ms / CPU処理(更新+描画命令) 平均 ${f(avg(b.cpu))} ms・P95 ${f(p(b.cpu, .95))} ms / 物理 平均 ${f(avg(b.step))} ms・P95 ${f(p(b.step, .95))} ms / 描画コール ${b.dc} / 三角形 ${n(b.tri)} / 候補ペア平均 ${n(b.pairs / b.frames)} / GPU時間 ${b.gpu.length ? '平均 ' + f(avg(b.gpu)) + ' ms' : '計測不可（この環境は GPU タイマー非対応）'}。端末依存の参考値です。`);
   }
-  document.addEventListener('visibilitychange', () => { if (document.hidden && bench) { bench = null; $('bench').disabled = false; $('status').textContent = 'タブが非表示になったため計測を破棄しました。'; } });
-  $('countLabel').textContent = engine.count.toLocaleString('en-US'); $('status').textContent = '準備完了。まずは2,500個で操作し、次に10,000個・100,000個を試してください。';
+  document.addEventListener('visibilitychange', () => { if (document.hidden && bench) { bench = null; $('bench').disabled = false; setStatus('タブが非表示になったため計測を破棄しました。'); } });
+  setInterval(() => { const s = engine.getStats(); $('metrics').innerHTML = [['平均FPS', f(s.fps, 1)], ['フレーム間隔', f(s.frameMs) + ' ms'], ['P95間隔', f(s.frameP95Ms) + ' ms'], ['CPU処理', f(s.cpuMs) + ' ms'], ['物理', f(s.stepMs) + ' ms'], ['GPU処理', s.gpuMs == null ? '—' : f(s.gpuMs) + ' ms'], ['衝突候補', n(s.candidatePairs)], ['重なり検出', n(s.overlaps)], ['描画コール', s.drawCalls], ['三角形', n(s.triangles)], ['可視/カリング(チャンク)', s.visibleChunks + '/' + s.culledChunks], ['GPU転送', f(s.uploadMs) + ' ms']].map(([k, v]) => `<div class="metric"><label>${k}</label><strong>${v}</strong></div>`).join(''); }, 300);
+  syncCount(); setStatus('準備完了。まず 2,500 個で操作し、次に 10,000・100,000 個を試してください。');
   window.addEventListener('pagehide', () => engine.dispose(), { once: true });
 })();
-</script>
-</body>
-</html>
+</script></body></html>

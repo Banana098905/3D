@@ -1,0 +1,177 @@
+{
+  "when": "2026-10-31T00:54:36.356Z",
+  "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36",
+  "renderer": "SwiftShader(ソフトウェアGL)想定: --use-angle=swiftshader",
+  "pass": 28,
+  "fail": 0,
+  "results": [
+    {
+      "name": "起動と描画（非空・GLエラー無し）",
+      "ok": true,
+      "ms": 351,
+      "detail": "{\"nonBg\":7415,\"drawCalls\":1,\"tri\":12,\"initMs\":18.3}"
+    },
+    {
+      "name": "カメラ変更で画像が変わる／正投影",
+      "ok": true,
+      "ms": 437,
+      "detail": "{\"perspectiveDiff\":7925,\"orthoDiff\":5308}"
+    },
+    {
+      "name": "リサイズ・高DPI追従",
+      "ok": true,
+      "ms": 852,
+      "detail": "{\"w0\":200,\"w1\":400,\"h1\":300,\"dpr\":1}"
+    },
+    {
+      "name": "stop/start/resume・フレーム停止確認",
+      "ok": true,
+      "ms": 1486,
+      "detail": "{\"before\":20,\"after\":51}"
+    },
+    {
+      "name": "dispose／再生成・リスナー漏れなし・E_DISPOSED・E_CANVAS_IN_USE",
+      "ok": true,
+      "ms": 856,
+      "detail": "{\"listeners\":\"12種 すべて対で解除\"}"
+    },
+    {
+      "name": "2インスタンス共存・片方dispose",
+      "ok": true,
+      "ms": 934,
+      "detail": "ok"
+    },
+    {
+      "name": "コンテキスト喪失→復元で自動再開",
+      "ok": true,
+      "ms": 1892,
+      "detail": "[\"lost\",\"restored\"]"
+    },
+    {
+      "name": "影 ON/OFF で画像が変わる",
+      "ok": true,
+      "ms": 379,
+      "detail": "{\"diffPixels\":840,\"shadowsFlag\":true}"
+    },
+    {
+      "name": "透明描画（ブレンド）と奥行きテスト",
+      "ok": true,
+      "ms": 234,
+      "detail": "{\"blended\":[128,128],\"without\":[255,0]}"
+    },
+    {
+      "name": "10万インスタンス: 描画コール・カリング・メモリ",
+      "ok": true,
+      "ms": 256,
+      "detail": "{\"drawCalls\":25,\"visible\":25,\"culled\":0,\"culledWhenAway\":25,\"gpuMB\":8.4}"
+    },
+    {
+      "name": "ピッキング(raycast)・clickイベント・インスタンスID",
+      "ok": true,
+      "ms": 4173,
+      "detail": "{\"hitDistance\":14.9,\"instanceId\":1}"
+    },
+    {
+      "name": "テクスチャ: データ/URL、解放",
+      "ok": true,
+      "ms": 405,
+      "detail": "{\"checkerValues\":2}"
+    },
+    {
+      "name": "物理(メインスレッド): 落下・衝突・インスタンス同期",
+      "ok": true,
+      "ms": 4178,
+      "detail": "{\"bodies\":300,\"stepMs\":0.9,\"pairs\":1419,\"minY\":0.25}"
+    },
+    {
+      "name": "物理(Web Worker): 起動・更新・dispose",
+      "ok": true,
+      "ms": 3272,
+      "detail": "{\"y0\":0,\"minY\":0.25}"
+    },
+    {
+      "name": "シーンJSON 保存→読込→画像一致",
+      "ok": true,
+      "ms": 1390,
+      "detail": "{\"diffPixels\":0,\"jsonKB\":8.4}"
+    },
+    {
+      "name": "ボクセル: 追加/削除/raycast/時間分割再構築/破棄",
+      "ok": true,
+      "ms": 1592,
+      "detail": "{\"chunks\":0,\"triangles\":10368,\"drawCallsBefore\":9,\"afterAdd\":10384}"
+    },
+    {
+      "name": "試作版互換API（classic script・create({count})）",
+      "ok": true,
+      "ms": 4501,
+      "detail": "{\"candidatePairs\":13067,\"overlaps\":324}"
+    },
+    {
+      "name": "品質プリセット/適応品質で解像度が変わる",
+      "ok": true,
+      "ms": 570,
+      "detail": "{\"ultraW\":400,\"lowW\":240}"
+    },
+    {
+      "name": "エラー通知: updateコールバックの例外でも継続",
+      "ok": true,
+      "ms": 752,
+      "detail": "{\"calls\":37,\"errors\":1}"
+    },
+    {
+      "name": "create/dispose 50回ループでGPUリソースが増えない",
+      "ok": true,
+      "ms": 1734,
+      "detail": "ok"
+    },
+    {
+      "name": "ページ起動 /index.html",
+      "ok": true,
+      "ms": 9076,
+      "detail": ""
+    },
+    {
+      "name": "ページ起動 /examples/basic-scene.html",
+      "ok": true,
+      "ms": 5818,
+      "detail": ""
+    },
+    {
+      "name": "ページ起動 /examples/physics-demo.html",
+      "ok": true,
+      "ms": 13352,
+      "detail": ""
+    },
+    {
+      "name": "ページ起動 /examples/resource-demo.html",
+      "ok": true,
+      "ms": 4498,
+      "detail": ""
+    },
+    {
+      "name": "ページ起動 /examples/voxel-demo.html",
+      "ok": true,
+      "ms": 6173,
+      "detail": ""
+    },
+    {
+      "name": "ページ起動 /examples/embed-example.html",
+      "ok": true,
+      "ms": 5984,
+      "detail": ""
+    },
+    {
+      "name": "ページ起動 /examples/module-example.html",
+      "ok": true,
+      "ms": 13562,
+      "detail": ""
+    },
+    {
+      "name": "ページ起動 /bench/index.html?quick=1",
+      "ok": true,
+      "ms": 4873,
+      "detail": ""
+    }
+  ]
+}

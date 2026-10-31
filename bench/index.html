@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MASSIVE ENGINE ベンチマーク</title><link rel="stylesheet" href="../examples/assets/demo.css"></head>
+<body>
+<header><h1>ベンチマーク／正当性チェック <span class="note" style="letter-spacing:0">エンジン本体とは独立（公開APIのみ使用）</span></h1>
+<nav><a href="../index.html">ホーム</a><a class="on" href="index.html">ベンチマーク</a></nav></header>
+<div class="layout">
+<section class="card"><div class="head"><b>実行</b><span id="env" class="note"></span></div>
+<canvas id="world" style="height:300px"></canvas>
+<div class="foot"><div class="btns"><button id="run" class="primary">全シナリオ実行</button><button id="check">候補ペア正当性チェック</button><button id="dl" disabled>JSONを保存</button></div><span id="status" class="status">待機中</span></div>
+<div style="overflow:auto;padding:10px"><table id="tbl" style="width:100%;border-collapse:collapse;font-size:12px"></table></div></section>
+<aside class="side"><section class="card panel"><h2>計測の定義</h2>
+<p class="note">初期化時間＝create()〜最初の描画まで。CPUフレーム時間＝1フレームの update＋描画命令発行にかかった時間（GPU完了待ちは含まない）。フレーム間隔＝連続フレームの到着間隔（vsyncに制限される）。GPU時間は EXT_disjoint_timer_query_webgl2 が使え、かつ値が得られた場合のみ表示し、無ければ「未計測」です。三つは混同しません。P95は最近傍順位法。メモリは performance.memory（Chromium系のみ）とエンジン管理のGPUバイト概算で、非対応なら「未計測」。</p>
+<p class="note">各シナリオ：ウォームアップ30フレーム後、計測窓 <input id="win" type="number" value="120" min="30" max="1200" style="width:64px"> フレーム。結果はこの端末・ブラウザ・タブの値であり、他環境での性能を保証しません。バックグラウンドタブでは正しく計測できません。</p></section></aside></div>
+<script src="../massive-engine.js"></script>
+<script>
+(() => {
+  const ME = window.MassiveEngine, $ = id => document.getElementById(id);
+  const fx = (v, d = 2) => v == null || !isFinite(v) ? '未計測' : Number(v).toFixed(d);
+  const pct = (a, q) => { if (!a.length) return null; const s = a.slice().sort((x, y) => x - y); return s[Math.min(s.length - 1, Math.ceil(s.length * q) - 1)]; };
+  const mean = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
+  const results = []; let busy = false;
+  const status = t => $('status').textContent = t;
+  $('env').textContent = (navigator.userAgent.match(/(Chrome|Firefox|Safari|Edg)\/[\d.]+/g) || ['?']).join(' ') + ' / ' + (navigator.hardwareConcurrency || '?') + 'コア / DPR ' + devicePixelRatio;
+  const raf = () => new Promise(r => requestAnimationFrame(r));
+
+  // シナリオ定義：engine を渡されて構成し、dispose 不要なものを返す
+  const scenarios = [
+    { name: '静的インスタンス 10,000', setup(e) { instances(e, 10000, false); } },
+    { name: '静的インスタンス 100,000', setup(e) { instances(e, 100000, false); } },
+    { name: '粒子互換 2,500（物理+描画）', setup(e) { e.setCount(2500); }, legacy: true },
+    { name: '粒子互換 10,000（物理+描画）', setup(e) { e.setCount(10000); }, legacy: true },
+    { name: '粒子互換 100,000（物理+描画）', setup(e) { e.setCount(100000); }, legacy: true },
+    { name: '個別メッシュ 1,000（描画コール多）', setup(e) { for (let i = 0; i < 1000; i++) { const m = e.addBox({ size: [0.6, 0.6, 0.6], color: 0x60ddff }); m.setPosition((i % 32 - 16) * 1.2, 0, (Math.floor(i / 32) - 16) * 1.2); } e.addDefaultLights && e.addDefaultLights(); e.camera.setPosition(0, 25, 30); e.camera.lookAt(0, 0, 0); } },
+  ];
+  // ?quick=1 : 10万個級の重いシナリオを除外（ソフトウェア描画の環境や短時間の確認用）
+  if (new URLSearchParams(location.search).has('quick')) for (let i = scenarios.length - 1; i >= 0; i--) if (/100,000/.test(scenarios[i].name)) scenarios.splice(i, 1);
+  function instances(e, n, anim) {
+    const cols = Math.ceil(Math.cbrt(n)), g = ME.Geometry.box(0.5, 0.5, 0.5), mat = new ME.Material({ color: 0x69e6ad });
+    const im = new ME.InstancedMesh(g, mat, { dynamic: !!anim }); im.setCount(n); const s = 0.9;
+    for (let i = 0; i < n; i++) { const x = i % cols, y = Math.floor(i / cols) % cols, z = Math.floor(i / (cols * cols)); im.setPositionAt(i, (x - cols / 2) * s, (y - cols / 2) * s, (z - cols / 2) * s); }
+    im.markInstancesDirty(); e.add(im); e.addDefaultLights && e.addDefaultLights(); e.camera.setPosition(cols * 0.6, cols * 0.5, cols * 1.1); e.camera.lookAt(0, 0, 0);
+  }
+
+  async function runOne(sc, frames) {
+    const canvas = document.createElement('canvas'); canvas.style.cssText = 'width:100%;height:100%'; const host = $('world').parentNode; $('world').style.display = 'none'; canvas.style.height = '300px'; canvas.style.width = '100%'; host.insertBefore(canvas, $('world'));
+    const rec = { name: sc.name, frames };
+    const cpu = [], itv = [], gpu = [], step = [], dc = [], tri = [], pairs = []; let total = 0;
+    const t0 = performance.now(); let e;
+    try {
+      e = sc.legacy ? ME.create({ canvas, count: 100, onStats: s => { if (total > 0) record(s); } }) : ME.create({ canvas, onStats: s => { if (total > 0) record(s); } });
+      sc.setup(e); await raf(); rec.initMs = performance.now() - t0;
+      function record(s) { cpu.push(s.cpuMs); itv.push(s.frameMs); step.push(s.stepMs); dc.push(s.drawCalls); tri.push(s.triangles); pairs.push(s.candidatePairs || 0); if (s.gpuMs != null) gpu.push(s.gpuMs); if (cpu.length >= frames) total = -1; }
+      for (let i = 0; i < 30; i++) await raf(); total = 1;
+      while (total > 0) await raf();
+      const st = e.getStats(); rec.objects = st.objects != null ? st.objects : st.count; rec.gpuTimerSupported = !!st.gpuTimerSupported;
+      Object.assign(rec, { cpuMean: mean(cpu), cpuP95: pct(cpu, .95), cpuMax: Math.max(...cpu), intervalMean: mean(itv), intervalP95: pct(itv, .95), gpuMean: gpu.length ? mean(gpu) : null, stepMean: mean(step), stepP95: pct(step, .95), drawCalls: mean(dc), triangles: mean(tri), pairsMean: mean(pairs), gpuBytes: st.gpuBytes != null ? st.gpuBytes : null, jsHeapMB: performance.memory ? performance.memory.usedJSHeapSize / 1048576 : null });
+    } catch (err) { rec.error = String(err && err.message || err); }
+    finally { try { e && e.dispose(); } catch (_) {} canvas.remove(); $('world').style.display = ''; }
+    return rec;
+  }
+  function render() {
+    const cols = [['シナリオ', r => r.name], ['初期化ms', r => fx(r.initMs, 0)], ['CPU平均', r => fx(r.cpuMean)], ['CPU P95', r => fx(r.cpuP95)], ['間隔P95', r => fx(r.intervalP95)], ['GPU平均', r => fx(r.gpuMean)], ['物理平均', r => fx(r.stepMean)], ['描画コール', r => fx(r.drawCalls, 0)], ['三角形', r => r.triangles == null ? '未計測' : Math.round(r.triangles).toLocaleString()], ['候補ペア', r => r.pairsMean ? Math.round(r.pairsMean).toLocaleString() : '—'], ['JSヒープMB', r => fx(r.jsHeapMB, 0)], ['備考', r => r.error ? 'エラー: ' + r.error : '']];
+    $('tbl').innerHTML = '<tr>' + cols.map(c => `<th style="text-align:left;padding:4px 6px;border-bottom:1px solid #26364d">${c[0]}</th>`).join('') + '</tr>' + results.map(r => '<tr>' + cols.map(c => `<td style="padding:4px 6px;border-bottom:1px solid #1c2b40">${c[1](r)}</td>`).join('') + '</tr>').join('');
+  }
+  $('run').addEventListener('click', async () => {
+    if (busy) return; busy = true; results.length = 0; render(); const frames = Math.max(30, Math.min(1200, +$('win').value || 120));
+    for (const sc of scenarios) { status('計測中: ' + sc.name); results.push(await runOne(sc, frames)); render(); }
+    status('完了（タブを切り替えた場合は結果が不正確です）'); $('dl').disabled = false; busy = false;
+  });
+  $('dl').addEventListener('click', () => { const blob = new Blob([JSON.stringify({ when: new Date().toISOString(), ua: navigator.userAgent, results }, null, 2)], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'massive-engine-bench.json'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); });
+
+  // 候補ペア正当性：PhysicsWorld を公開APIで直接検証（描画なし）。
+  $('check').addEventListener('click', () => {
+    const W = ME.PhysicsWorld; if (!W) { status('PhysicsWorld が公開されていません'); return; }
+    const lines = []; const rng = (() => { let s = 12345; return () => (s = (s * 1664525 + 1013904223) >>> 0) / 4294967296; })();
+    const cases = {
+      'ランダム': (w, n) => { for (let i = 0; i < n; i++) w.addBody({ radius: 0.2 + rng() * 0.2, position: [rng() * 20, rng() * 20, rng() * 20] }); },
+      '密集': (w, n) => { for (let i = 0; i < n; i++) w.addBody({ radius: 0.3, position: [rng() * 3, rng() * 3, rng() * 3] }); },
+      'セル境界': (w, n) => { for (let i = 0; i < n; i++) w.addBody({ radius: 0.25, position: [Math.round(rng() * 20), Math.round(rng() * 20), Math.round(rng() * 20)] }); },
+      '巨大物体混在': (w, n) => { for (let i = 0; i < n; i++) w.addBody({ radius: i % 50 === 0 ? 4 : 0.25, position: [rng() * 20, rng() * 20, rng() * 20] }); },
+      '空セル多数': (w, n) => { for (let i = 0; i < n; i++) w.addBody({ radius: 0.25, position: [rng() * 200, rng() * 200, rng() * 200] }); },
+    };
+    let allOk = true;
+    for (const [name, fn] of Object.entries(cases)) {
+      try {
+        const w = new W({ gravity: [0, 0, 0], bounds: { min: [-10, -10, -10], max: [250, 250, 250] }, cellSize: 1, maxReach: 2 }); fn(w, 600);
+        const pairs = w.computeCandidatePairs(); const got = new Set(); let dup = 0;
+        for (const [x, y] of pairs) { const key = Math.min(x, y) * 1e7 + Math.max(x, y); if (got.has(key)) dup++; got.add(key); }
+        const truth = w.bruteForceOverlaps(); let miss = 0; for (const [x, y] of truth) if (!got.has(Math.min(x, y) * 1e7 + Math.max(x, y))) miss++;
+        const need = { size: truth.length };
+        const ok = miss === 0 && dup === 0; allOk = allOk && ok; lines.push(`${ok ? 'PASS' : 'FAIL'} ${name}: 真の重なり ${need.size} / 候補 ${got.size} / 見落とし ${miss} / 重複 ${dup}`);
+      } catch (err) { allOk = false; lines.push('FAIL ' + name + ': ' + err.message); }
+    }
+    status((allOk ? '全PASS' : '失敗あり') + ' — ' + lines.join(' | ')); console.log(lines.join('\n'));
+  });
+})();
+</script></body></html>

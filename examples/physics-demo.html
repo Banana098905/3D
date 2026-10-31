@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MASSIVE ENGINE 1.0 — 衝突・物理演算</title><link rel="stylesheet" href="assets/demo.css"></head>
+<body>
+<header><h1>MASSIVE ENGINE 1.0 — 衝突・物理演算</h1><nav></nav></header>
+<div class="layout">
+<section class="card"><div class="head"><div><b>球と箱の落下・衝突（固定時間刻み 60Hz・空間分割）</b><div class="note" style="margin:0">クリック=球を発射 / Shift+クリック=箱を落とす</div></div><span id="mode" class="note"></span></div>
+<canvas id="world" aria-label="物理演算デモ"></canvas><div class="foot"><span id="status">初期化中…</span></div></section>
+<aside class="side">
+<section class="card panel"><h2>シミュレーション</h2>
+<div class="row"><label for="n">球の数</label><strong id="nl">1,500</strong></div><input id="n" type="range" min="100" max="20000" step="100" value="1500">
+<div class="row"><label for="grav">重力</label><input id="grav" type="range" min="0" max="20" step="0.5" value="9.8" style="width:55%"></div>
+<div class="row"><label for="rest">反発係数</label><input id="rest" type="range" min="0" max="1" step="0.05" value="0.35" style="width:55%"></div>
+<div class="row"><label for="fric">摩擦</label><input id="fric" type="range" min="0" max="1" step="0.05" value="0.2" style="width:55%"></div>
+<div class="row"><label for="worker">Web Workerで計算</label><input id="worker" type="checkbox"></div>
+<div class="btns"><button id="reset" class="primary">リセット</button><button id="pause">一時停止</button><button id="shake">揺らす</button></div></section>
+<section class="card panel"><h2>統計</h2><div id="m" class="metrics"></div>
+<p class="note">Worker実行では結果が1フレーム遅れで反映されます。物理の詳細な時間内訳(格子構築/衝突)はメインスレッド実行時のみ取得できます。</p></section>
+</aside></div>
+<script type="module">
+import * as ME from '../dist/massive-engine.esm.js';
+import { nav, $, fmt, int, metrics } from './assets/nav.js'; nav('physics-demo.html');
+const R = 0.22, HALF = 9; let engine, balls, boxes, pausedPhysics = false, useWorker = false;
+const err = e => { $('status').textContent = 'エラー: ' + e.message; $('status').className = 'status err'; };
+engine = ME.create({ canvas: $('world'), shadows: true, background: '#0e1522', onError: err }); window.__demo = { engine, ME };
+engine.scene.children.find(c => c.type === 'DirectionalLight').castShadow = true;
+const bx = (pos, half) => engine.addBox({ position: pos, size: half.map(h => h * 2), color: '#51607a', receiveShadow: true, castShadow: true });
+function build() {
+  if (balls) { balls.disposeResources({ textures: false }); balls.removeFromParent(); }
+  for (const b of boxes || []) { b.disposeResources(); b.removeFromParent(); } boxes = [];
+  engine.disablePhysics(); const world = engine.enablePhysics({ bounds: { min: [-HALF, 0, -HALF], max: [HALF, 40, HALF] }, restitution: +$('rest').value, friction: +$('fric').value, gravity: [0, -$('grav').value, 0], boundsRestitution: 0.3, maxSubSteps: 3 }, { worker: useWorker });
+  const isW = !!world.isWorker; $('mode').textContent = isW ? '物理: Web Worker' : '物理: メインスレッド';
+  const n = +$('n').value; balls = new ME.InstancedMesh(ME.Geometry.sphere(R, 12, 8), new ME.Material({ specular: 0.3 }), { capacity: n + 2000, castShadow: true, receiveShadow: true, name: '球' }); balls.setCount(n); engine.add(balls);
+  const statics = [[[0, -0.5, 0], [HALF, 0.5, HALF]], [[-3, 1.5, 0], [2, 0.3, 4]], [[3.5, 3, -1], [0.3, 3, 3]], [[0, 5.5, 4.5], [4, 0.3, 1.5]]];
+  const d = { pos: new Float32Array(n * 3 + 0), vel: new Float32Array(n * 3), ext: new Float32Array(n * 3), shape: new Uint8Array(n), invMass: new Float32Array(n), rest: new Float32Array(n), fric: new Float32Array(n) };
+  let s = 12345; const r = () => (s = (s * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < n; i++) { d.pos.set([(r() - 0.5) * 2 * (HALF - 1), 6 + r() * 30, (r() - 0.5) * 2 * (HALF - 1)], i * 3); d.ext.set([R, R, R], i * 3); d.invMass[i] = 1 / 0.04; d.rest[i] = +$('rest').value; d.fric[i] = +$('fric').value; balls.setColorAt(i, 0.4 + 0.6 * r(), 0.5 + 0.4 * r(), 0.9 - 0.5 * r()); const o = i * 16; balls.matrices[o] = balls.matrices[o + 5] = balls.matrices[o + 10] = 1; }
+  balls.markInstancesDirty();
+  for (const [p, h] of statics) boxes.push(bx(p, h));
+  const addStatics = () => statics.map(([p, h]) => ({ shape: 'box', halfExtents: h, position: p, static: true }));
+  if (isW) {
+    const sd = { pos: new Float32Array(statics.length * 3), vel: new Float32Array(statics.length * 3), ext: new Float32Array(statics.length * 3), shape: new Uint8Array(statics.length).fill(1), invMass: new Float32Array(statics.length), rest: new Float32Array(statics.length).fill(0.3), fric: new Float32Array(statics.length).fill(0.2) };
+    statics.forEach(([p, h], i) => { sd.pos.set(p, i * 3); sd.ext.set(h, i * 3); });
+    world.addBodies(d, n).then(() => world.addBodies(sd, statics.length)).then(() => { world.bindInstanced(balls, 0, n); });
+  } else {
+    for (let i = 0; i < n; i++) world.addBody({ radius: R, mass: 0.04, position: Array.from(d.pos.subarray(i * 3, i * 3 + 3)) });
+    for (const b of addStatics()) world.addBody(b);
+    world.bindInstanced(balls, 0, n);
+  }
+  engine.controls.target.set([0, 3, 0]); engine.controls.distance = 26; engine.controls.pitch = 0.5; engine.controls.update(); $('nl').textContent = n.toLocaleString();
+}
+build();
+const spawn = (ev, box) => {
+  if (!engine.physics || engine.physics.isWorker) { $('status').textContent = 'Worker実行中は発射を省略しています。'; return; }
+  const ray = engine.screenRay(ev.originalEvent.clientX, ev.originalEvent.clientY), w = engine.physics;
+  const mesh = box ? engine.addBox({ size: [0.7, 0.7, 0.7], color: '#ffb347', castShadow: true, receiveShadow: true }) : engine.addSphere({ radius: 0.45, color: '#ff5577', castShadow: true, receiveShadow: true });
+  const o = ray.origin; w.addBody({ shape: box ? 'box' : 'sphere', radius: 0.45, halfExtents: [0.35, 0.35, 0.35], mass: box ? 0.5 : 0.8, position: [o[0] + ray.direction[0] * 2, o[1] + ray.direction[1] * 2, o[2] + ray.direction[2] * 2], velocity: box ? [0, 0, 0] : ray.direction.map(v => v * 22), node: mesh });
+};
+engine.on('click', ev => spawn(ev, ev.shiftKey));
+const rebuild = () => build();
+$('n').oninput = e => { $('nl').textContent = (+e.target.value).toLocaleString(); }; $('n').onchange = rebuild; $('reset').onclick = rebuild;
+$('grav').oninput = e => engine.physics && engine.physics.setOptions({ gravity: [0, -e.target.value, 0] });
+$('rest').onchange = rebuild; $('fric').onchange = rebuild;
+$('worker').onchange = e => { useWorker = e.target.checked; rebuild(); };
+$('pause').onclick = () => { pausedPhysics = !pausedPhysics; if (engine.physics && !engine.physics.isWorker) engine.physics.setOptions({ timeScale: pausedPhysics ? 0 : 1 }); $('pause').textContent = pausedPhysics ? '再開' : '一時停止'; };
+$('shake').onclick = () => { const w = engine.physics; if (!w || w.isWorker) return; for (let i = 0; i < w.count; i++) if (w.isAlive(i) && w.invMass[i] > 0) w.applyImpulse(i, (Math.random() - 0.5) * 2, 3 * Math.random(), (Math.random() - 0.5) * 2); };
+setInterval(() => { const s = engine.getStats(); metrics($('m'), [['FPS', fmt(s.fps, 1)], ['フレーム間隔P95', fmt(s.frameP95Ms) + ' ms'], ['物理(合計)', s.physicsOnWorker ? 'Worker' : fmt(s.stepMs) + ' ms'], ['格子構築', s.physicsOnWorker ? '—' : fmt(s.gridMs) + ' ms'], ['衝突処理', s.physicsOnWorker ? '—' : fmt(s.collisionMs) + ' ms'], ['候補ペア', int(s.candidatePairs)], ['重なり', int(s.overlaps)], ['物体数', int(s.bodies)], ['substep/フレーム', s.physicsSubsteps], ['破棄した遅れ時間', fmt(s.physicsDroppedTime, 2) + ' s'], ['描画コール', s.drawCalls], ['GPU処理', s.gpuMs == null ? '—' : fmt(s.gpuMs) + ' ms']]); }, 400);
+$('status').textContent = '準備完了：クリックで球を発射できます。';
+window.addEventListener('pagehide', () => engine.dispose(), { once: true });
+</script></body></html>

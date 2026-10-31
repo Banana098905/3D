@@ -1,0 +1,24 @@
+{
+  "name": "massive-engine",
+  "version": "1.0.0",
+  "description": "MASSIVE ENGINE 1.0 — 依存ライブラリなしの汎用 WebGL 2 3Dエンジン（大量インスタンス・空間分割物理・シーンJSON）",
+  "type": "module",
+  "main": "dist/massive-engine.esm.js",
+  "module": "dist/massive-engine.esm.js",
+  "browser": "dist/massive-engine.js",
+  "files": ["dist", "massive-engine.js", "massive-engine.mjs", "src"],
+  "scripts": {
+    "build": "node tools/build.mjs",
+    "test": "node --test \"tests/unit/*.test.js\"",
+    "test:browser": "node tests/browser/run.mjs",
+    "bench:physics": "node bench/physics-bench.mjs",
+    "serve": "node tools/serve.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  },
+  "optionalDependencies": {},
+  "keywords": ["webgl2", "3d", "engine", "instancing", "physics"],
+  "license": "UNLICENSED",
+  "private": false
+}

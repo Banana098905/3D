@@ -1,82 +1,73 @@
-# MASSIVE ENGINE Prototype 2.0
+# MASSIVE ENGINE 1.0
 
-A dependency-free experimental WebGL 2 instanced renderer and 2D circular-collision simulation on an XZ plane. Three.js is not used. **This is a prototype, not a production-ready general 3D engine.**
+外部ライブラリ（Three.js 等）に依存しない、WebGL 2 ベースの汎用 Web 3D エンジンです。
+`<script>` タグ 1 本、または ES モジュールとして既存ページへ埋め込めます。試作版 2.0（粒子シミュレーション）の API は互換モードで引き続き使えます。
 
-## Files
+> **最初に読んでください（正直な到達点）**
+> - 実ブラウザテストは **Chromium + ソフトウェア描画（SwiftShader）** でのみ実施しました。Firefox / Safari / 実 GPU / スマートフォンでは**未検証**です。手順は [docs/TESTING.md](docs/TESTING.md) の「あなたの環境で確認する」にあります。
+> - **BLOCKCRAFT のファイルは受け取っていないため、実ゲームとの統合テストは未実施**です。代わりに並行導入のための部品（`VoxelWorld`）と手順書 [docs/BLOCKCRAFT統合ガイド.md](docs/BLOCKCRAFT統合ガイド.md) を用意しました。
+> - 物理は「球と軸平行箱（回転なし）」の簡易エンジンです。フルの剛体物理エンジンではありません（[docs/LIMITATIONS.md](docs/LIMITATIONS.md)）。
+> - WebGPU は未実装です。
+> - **ライセンスは未設定**です（`package.json` は `UNLICENSED`）。公開する場合は所有者が選んで `LICENSE` を追加してください。
 
-- `massive-engine.js` — classic-script build; exposes `window.MassiveEngine`.
-- `massive-engine.mjs` — native ES module build; exports `create`, `Engine`, `isSupported`, `version`, and a default API object.
-- `index.html` — interactive demo and benchmark.
-- `examples/embed-example.html` — two independent engine instances on one page.
-- `examples/module-example.html` — native ES module integration; includes dispose/recreate controls.
-- `examples/external-site-example.html` — template for embedding from a different website after replacing the placeholder URL.
-
-## Quick start: classic script
+## 30 秒で動かす
 
 ```html
-<canvas id="world" style="width:100%;height:440px;display:block"></canvas>
+<canvas id="c" style="width:100%;height:60vh"></canvas>
 <script src="massive-engine.js"></script>
 <script>
-  const canvas = document.querySelector('#world');
-  const engine = MassiveEngine.create({
-    canvas,
-    count: 10000,
-    gridCellSize: 0.60,
-    pauseWhenHidden: true,
-    onStats(stats) { console.log(stats); },
-    onError(error) { console.error(error); }
-  });
-  // Call when removing the component/page:
-  // engine.dispose();
+  const engine = MassiveEngine.create({ canvas: document.getElementById('c') });
+  engine.addPlane({ width: 20, depth: 20, color: 0x88aa88, receiveShadow: true });
+  engine.addBox({ size: [2, 2, 2], position: [0, 1, 0], color: 0xff7755, castShadow: true });
+  // マウスドラッグで回転・ホイールでズーム（既定で有効）
 </script>
 ```
 
-## Quick start: ES module
+ローカルで確認するには（`file://` では動きません。HTTP サーバーが必要です）:
 
-```html
-<canvas id="world" style="width:100%;height:440px;display:block"></canvas>
-<script type="module">
-  import MassiveEngine, { create, isSupported } from './massive-engine.mjs';
-  const canvas = document.querySelector('#world');
-  if (!isSupported(canvas)) throw new Error('WebGL 2 is unavailable');
-  const engine = create({ canvas, count: 10000, gridCellSize: 0.60 });
-  console.log(MassiveEngine.version);
-</script>
+```
+node tools/serve.mjs 8080      # → http://localhost:8080/
 ```
 
-For ESM, use HTTPS (for example GitHub Pages) or a local HTTP server. Browser module loading from `file://` may be blocked.
+## 同梱物
 
-## Publish for use from another website
+| パス | 内容 |
+|---|---|
+| `src/` | エンジンのソース（ES モジュール、依存なし） |
+| `dist/massive-engine.js` / `.min.js` | 通常の `<script>` 用（グローバル `MassiveEngine`） |
+| `dist/massive-engine.esm.js` / `.esm.min.js` | ES モジュール用 |
+| `massive-engine.js`, `massive-engine.mjs`（ルート） | 試作版と同じ URL で差し替えられるコピー |
+| `index.html` | 試作版互換の粒子デモ（10 秒ベンチ付き） |
+| `examples/basic-scene.html` | 基本 3D デモ（メッシュ・テクスチャ・光・影・透明・インスタンス・ピッキング・シーン JSON・品質） |
+| `examples/physics-demo.html` | 衝突・物理デモ（メインスレッド／Worker 切替） |
+| `examples/resource-demo.html` | リソース管理デモ（参照カウント・stop/dispose/再生成・コンテキスト喪失） |
+| `examples/voxel-demo.html` | ブロック追加/削除（BLOCKCRAFT 型の統合部品デモ） |
+| `examples/embed-example.html` | HTML 埋め込み（エンジン 2 台同居） |
+| `examples/module-example.html` | ES モジュール利用例 |
+| `examples/external-site-example.html` | 別サイトから GitHub Pages 上のエンジンを読む雛形 |
+| `bench/index.html` | ブラウザ用ベンチマーク／候補ペア正当性チェック（エンジン本体と独立） |
+| `bench/physics-bench.mjs` | Node 用の物理ベンチマーク |
+| `tests/unit/` | 単体テスト（66 件） |
+| `tests/browser/run.mjs` | 実ブラウザテスト（28 件） |
+| `docs/` | API・機能一覧・制限・テスト・公開手順・移行・BLOCKCRAFT 統合 |
 
-1. Create a repository on GitHub and upload the contents of this folder to the repository root.
-2. In the repository settings, enable **Pages** from the `main` branch and `/ (root)` folder (or use your preferred static host).
-3. Once published, open the public `massive-engine.js` URL on that site to verify it loads.
-4. In `examples/external-site-example.html`, replace `YOUR-USERNAME` and `YOUR-REPOSITORY` with the actual published path.
-5. To use from another website, add `<script src="https://YOUR-USERNAME.github.io/YOUR-REPOSITORY/massive-engine.js"></script>` and call `MassiveEngine.create(...)` on that site's canvas.
+## ビルドとテスト
 
-Do not publish with the placeholder URL. Static JavaScript files generally can be loaded cross-origin as scripts; if you later load model/data files with `fetch`, CORS settings may be required.
+```
+npm install            # esbuild（ビルド専用の開発依存）。テスト実行には playwright も必要
+npm run build          # dist/ とルートのコピーを再生成
+npm test               # 単体テスト 66 件（ブラウザ不要）
+npm run test:browser   # Chromium で 28 件（playwright が必要）
+npm run bench:physics  # Node で物理ベンチ
+```
 
-## API
+## ドキュメント
 
-- `MassiveEngine.create(options)` or `new MassiveEngine.Engine(options)`
-- `MassiveEngine.isSupported(canvas)`
-- `engine.start()` / `engine.stop()`
-- `engine.setCount(n)` (clamped to 100–100,000, rounded to 100s)
-- `engine.setSpeed(multiplier)` (clamped to 0.1–3)
-- `engine.setGridCellSize(width)` (0.3–2.0)
-- `engine.getStats()`
-- `engine.reset()` / `engine.resize()` / `engine.dispose()`
-
-Options: `canvas`, `count`, `gridCellSize`, `speed`, `cubeRotation`, `autoStart`, `autoResize`, `pauseWhenHidden`, `antialias`, `onStats`, `onError`.
-
-## Prototype 2.0 changes
-
-- Keeps the classic global build for simple script tags.
-- Adds a native ES module build for modern bundlers and `<script type="module">`.
-- Adds a module integration sample with stop, reset, dispose, and recreate controls.
-- Adds a second-origin embed template with an explicit URL placeholder and publication instructions.
-- Keeps the measured configuration as the demo default: cell width 0.60 and baseline collision solver.
-
-## Limitations
-
-The engine renders instanced cubes and simulates circular collisions in the XZ plane; it is not a full 3D physics engine. It does not support arbitrary mesh import, general 3D rigid-body physics, a full asset pipeline, scene serialization, WebGPU, worker offloading, or deterministic replay. WebGL 2 is required. Performance varies by browser, device, viewport, and scene. Context loss is reported but GPU resources are not automatically restored; dispose and recreate after restoration. Benchmark figures are device-dependent and must be measured in the actual target environment.
+- [API リファレンス](docs/API.md)
+- [実装済み／未実装の機能一覧](docs/FEATURES.md)
+- [既知の制限と対応ブラウザ](docs/LIMITATIONS.md)
+- [テスト手順と結果](docs/TESTING.md)
+- [公開手順（GitHub Pages）](docs/DEPLOY.md)
+- [試作版 2.0 からの移行](docs/MIGRATION.md)
+- [BLOCKCRAFT 統合ガイド](docs/BLOCKCRAFT統合ガイド.md)
+- [サードパーティ・ライセンス](THIRD_PARTY.md)

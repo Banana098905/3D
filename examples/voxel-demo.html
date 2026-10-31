@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MASSIVE ENGINE 1.0 — ボクセル統合（BLOCKCRAFT型）</title><link rel="stylesheet" href="assets/demo.css"></head>
+<body>
+<header><h1>MASSIVE ENGINE 1.0 — ボクセル統合テスト</h1><nav></nav></header>
+<div class="layout">
+<section class="card"><div class="head"><div><b>ブロックの追加・削除・チャンク再構築（時間予算つき）</b><div class="note" style="margin:0">左クリック=削除 / Shift+クリック（または右クリック）=設置 / ドラッグ=回転</div></div><span id="sel" class="note"></span></div>
+<canvas id="world" aria-label="ボクセルワールド" tabindex="0"></canvas><div class="foot"><span id="status">生成中…</span></div></section>
+<aside class="side">
+<section class="card panel"><h2>操作</h2>
+<div class="row"><label for="blk">設置ブロック</label><select id="blk"><option value="1">石</option><option value="2">草</option><option value="3">土</option><option value="4">木</option><option value="5" selected>橙</option></select></div>
+<div class="btns"><button id="regen" class="primary">地形を再生成</button><button id="stop">停止</button><button id="resume">再開</button><button id="size">サイズ変更(96↔48)</button><button id="dispose">破棄して復帰</button></div>
+<p class="note">地形生成は時間予算つきジョブでチャンクごとに分割され、画面が固まりません。</p></section>
+<section class="card panel"><h2>統計</h2><div id="m" class="metrics"></div></section>
+<section class="card panel"><h2>BLOCKCRAFT への組み込み方針</h2><p class="note">既存の Three.js 描画は残したまま、まず別キャンバス（ミニマップ/プレビュー/独立領域）で本エンジンを並行利用し、動作確認できた機能から移行します。詳細は docs/BLOCKCRAFT統合ガイド.md。</p></section>
+</aside></div>
+<script type="module">
+import * as ME from '../dist/massive-engine.esm.js';
+import { nav, $, fmt, int, metrics } from './assets/nav.js'; nav('voxel-demo.html');
+let engine, world, SIZE = 96;
+const palette = [null, '#8a8f98', '#4ea84a', '#8b5a2b', '#a9783c', '#ff8a2a'];
+function start() {
+  engine = ME.create({ canvas: $('world'), shadows: true, background: '#7fb2e5', onError: e => { $('status').textContent = 'エラー: ' + e.message; $('status').className = 'status err'; } });
+  window.__demo = { engine, ME, get world() { return world; } };
+  const sun = engine.scene.children.find(c => c.type === 'DirectionalLight'); sun.castShadow = true; sun.shadow.extent = 60; sun.shadow.mapSize = 2048;
+  world = new ME.VoxelWorld({ chunkSize: 16, palette, parent: engine.scene, jobs: engine.jobs });
+  gen();
+  engine.controls.target.set([SIZE / 2, 6, SIZE / 2]); engine.controls.distance = SIZE * 0.9; engine.controls.pitch = 0.6; engine.controls.maxDistance = 400; engine.controls.update();
+  engine.on('click', ev => {
+    const ray = engine.screenRay(ev.originalEvent.clientX, ev.originalEvent.clientY), h = world.raycast(Array.from(ray.origin), Array.from(ray.direction), 300);
+    if (!h) { $('sel').textContent = '選択: なし'; return; }
+    const place = ev.shiftKey || ev.button === 2;
+    if (place) { const x = h.x + h.normal[0], y = h.y + h.normal[1], z = h.z + h.normal[2]; world.setBlock(x, y, z, +$('blk').value); $('sel').textContent = `設置 (${x},${y},${z})`; }
+    else { world.setBlock(h.x, h.y, h.z, 0); $('sel').textContent = `削除 (${h.x},${h.y},${h.z})`; }
+  });
+  $('world').addEventListener('contextmenu', e => e.preventDefault());
+}
+function gen() {
+  const t0 = performance.now(); const hf = (x, z) => Math.floor(5 + 4 * Math.sin(x * 0.11) * Math.cos(z * 0.09) + 2 * Math.sin((x + z) * 0.23));
+  world.generate([0, 0, 0], [SIZE, 14, SIZE], (x, y, z) => { const h = hf(x, z); if (y > h) return 0; if (y === h) return 2; if (y > h - 3) return 3; return 1; });
+  $('status').textContent = `ブロック生成 ${(performance.now() - t0).toFixed(1)} ms（メッシュ化は後続フレームで時間予算内に実行）`;
+}
+start();
+$('regen').onclick = () => { world.dispose(); world = new ME.VoxelWorld({ chunkSize: 16, palette, parent: engine.scene, jobs: engine.jobs }); gen(); };
+$('stop').onclick = () => engine.stop(); $('resume').onclick = () => { try { engine.resume(); } catch (e) { $('status').textContent = e.message; } };
+$('size').onclick = () => { SIZE = SIZE === 96 ? 48 : 96; $('regen').onclick(); };
+$('dispose').onclick = () => { world.dispose(); engine.dispose(); start(); $('status').textContent = '破棄して再作成しました。'; };
+setInterval(() => { const s = engine.getStats(), v = world.stats; metrics($('m'), [['FPS', fmt(s.fps, 1)], ['描画コール', s.drawCalls + ' (+影 ' + s.shadowDrawCalls + ')'], ['三角形', int(s.triangles)], ['チャンク(総/メッシュ)', v.chunks + '/' + v.meshedChunks], ['面数', int(v.faces)], ['再構築待ち', engine.jobs.pending], ['再構築完了数', v.rebuilds], ['カリング物体', s.culledObjects], ['CPU処理', fmt(s.cpuMs) + ' ms'], ['フレームP95', fmt(s.frameP95Ms) + ' ms']]); }, 400);
+window.addEventListener('pagehide', () => { world.dispose(); engine.dispose(); }, { once: true });
+</script></body></html>

@@ -1,48 +1,28 @@
 <!doctype html>
-<html lang="ja">
-<head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>MASSIVE ENGINE 1.9 — Embed Example</title>
-<style>
-:root{color-scheme:dark;font-family:system-ui,sans-serif;background:#08111f;color:#e5eefb}body{margin:0;padding:22px;max-width:1100px;margin-inline:auto}h1{font-size:1.2rem}p{color:#a9bad1;line-height:1.65}.cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.card{border:1px solid #263953;background:#101b2b;border-radius:12px;padding:12px;min-width:0}canvas{width:100%;height:290px;display:block;background:#08111d;border-radius:8px;touch-action:none}.controls{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}button{border:1px solid #38506e;background:#1b2d45;color:#eff6ff;border-radius:7px;padding:7px 10px;cursor:pointer}.stats{font:12px ui-monospace,monospace;color:#9cecff;overflow-wrap:anywhere;margin-top:8px;min-height:2em}.note{font-size:12px}@media(max-width:700px){.cards{grid-template-columns:1fr}canvas{height:260px}}
-</style>
-</head>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MASSIVE ENGINE 1.0 — 埋め込み例（2インスタンス共存）</title>
+<style>:root{color-scheme:dark;font-family:system-ui,sans-serif;background:#08111f;color:#e5eefb}body{margin:0;padding:20px;max-width:1100px;margin-inline:auto}h1{font-size:1.25rem}p{color:#a9bad1;line-height:1.65}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.card{border:1px solid #263953;background:#101b2b;border-radius:12px;padding:12px}canvas{width:100%;height:340px;display:block;background:#08111d;border-radius:8px;touch-action:none}.stats{font:12px ui-monospace,monospace;color:#9cecff;margin-top:8px;overflow-wrap:anywhere}button{border:1px solid #38506e;background:#1b2d45;color:#eff6ff;border-radius:7px;padding:6px 10px;cursor:pointer}@media(max-width:700px){.grid{grid-template-columns:1fr}}</style></head>
 <body>
-<h1>MASSIVE ENGINE 1.9 — 複数インスタンスの埋め込みデモ</h1>
-<p>1つのページに独立したエンジンを2つ配置する例です。それぞれ別々のCanvas、状態、統計を持ちます。ページを閉じる前やUIを削除するときは <code>dispose()</code> を呼んでください。</p>
-<div class="cards">
-  <section class="card"><b>Instance A · 2,500 objects</b><canvas id="world-a" aria-label="エンジンインスタンスA"></canvas><div class="stats" id="stats-a">初期化中…</div><div class="controls"><button id="pause-a">一時停止</button><button id="reset-a">リセット</button></div></section>
-  <section class="card"><b>Instance B · 5,000 objects</b><canvas id="world-b" aria-label="エンジンインスタンスB"></canvas><div class="stats" id="stats-b">初期化中…</div><div class="controls"><button id="pause-b">一時停止</button><button id="reset-b">リセット</button></div></section>
+<h1>MASSIVE ENGINE 1.0 — クラシック &lt;script&gt; 版で 2 つのエンジンを同居</h1>
+<p>1ページに複数のキャンバスと独立したエンジンを置けます。片方を破棄しても、もう一方は動き続けます。</p>
+<div class="grid">
+<div class="card"><canvas id="a" aria-label="粒子シミュレーション"></canvas><div id="sa" class="stats">…</div><button id="da">Aを破棄</button></div>
+<div class="card"><canvas id="b" aria-label="シーン"></canvas><div id="sb" class="stats">…</div><button id="db">Bを破棄</button></div>
 </div>
-<p class="note" id="errors">WebGL 2が必要です。性能は端末・ブラウザに依存します。</p>
+<p id="err" style="color:#ff9ca8"></p>
 <script src="../massive-engine.js"></script>
 <script>
-(() => {
-  const engines = [];
-  const setups = [
-    { canvasId: 'world-a', statsId: 'stats-a', pauseId: 'pause-a', resetId: 'reset-a', count: 2500, speed: 1.0 },
-    { canvasId: 'world-b', statsId: 'stats-b', pauseId: 'pause-b', resetId: 'reset-b', count: 5000, speed: 1.15 }
-  ];
-  for (const setup of setups) {
-    const canvas = document.getElementById(setup.canvasId);
-    if (!MassiveEngine.isSupported(canvas)) {
-      document.getElementById('errors').textContent = 'WebGL 2が利用できないため、デモを起動できませんでした。';
-      break;
-    }
-    const statsEl = document.getElementById(setup.statsId);
-    const engine = MassiveEngine.create({
-      canvas, count: setup.count, speed: setup.speed, gridCellSize: 0.60,
-      onStats(s) { statsEl.textContent = `FPS ${s.fps.toFixed(1)} · step ${s.stepMs.toFixed(2)} ms · candidates ${s.candidatePairs.toLocaleString()}`; },
-      onError(err) { document.getElementById('errors').textContent = `エンジンエラー：${err.message}`; }
-    });
-    engines.push({ engine, setup });
-    document.getElementById(setup.pauseId).addEventListener('click', event => {
-      if (engine.running) { engine.stop(); event.currentTarget.textContent = '再開'; }
-      else { engine.start(); event.currentTarget.textContent = '一時停止'; }
-    });
-    document.getElementById(setup.resetId).addEventListener('click', () => engine.reset());
-  }
-  window.addEventListener('pagehide', () => { for (const item of engines) item.engine.dispose(); }, { once: true });
-})();
-</script>
-</body></html>
+  const err = e => { document.getElementById('err').textContent = 'エラー: ' + e.message; };
+  // A: 試作版と同じ互換API（count を指定すると粒子シーン）
+  const a = MassiveEngine.create({ canvas: document.getElementById('a'), count: 5000, gridCellSize: 0.60, pauseWhenHidden: true, onStats: s => { document.getElementById('sa').textContent = 'A 粒子 ' + s.count + ' · FPS ' + s.fps.toFixed(1) + ' · 物理 ' + s.stepMs.toFixed(2) + ' ms · 描画コール ' + s.drawCalls; }, onError: err });
+  // B: 新しいシーンAPI
+  const b = MassiveEngine.create({ canvas: document.getElementById('b'), shadows: true, background: '#10182a', onError: err });
+  b.scene.children.find(c => c.type === 'DirectionalLight').castShadow = true;
+  b.addPlane({ width: 20, depth: 20, color: '#556' });
+  const box = b.addBox({ position: [0, 0.6, 0], color: '#ff8a2a', castShadow: true }); b.addSphere({ position: [2, 0.5, 0], color: '#3aa0ff', castShadow: true });
+  b.addUpdate((dt, t) => { box.setRotationEuler(0, t, 0); });
+  b.on('afterRender', () => { const s = b.getStats(); document.getElementById('sb').textContent = 'B シーン · FPS ' + s.fps.toFixed(1) + ' · 描画コール ' + s.drawCalls + ' · 三角形 ' + s.triangles; });
+  window.__demo = { a, b };
+  document.getElementById('da').onclick = () => a.dispose(); document.getElementById('db').onclick = () => b.dispose();
+  window.addEventListener('pagehide', () => { a.dispose(); b.dispose(); }, { once: true });
+</script></body></html>

@@ -1,0 +1,17 @@
+<!doctype html><meta charset="utf-8"><title>harness</title>
+<body style="margin:0;background:#000"><div id="host"></div>
+<script src="../../massive-engine.js"></script>
+<script>
+// ブラウザテスト用の補助関数（テスト対象のエンジンとは無関係）
+window.H = {
+  ME: window.MassiveEngine,
+  mk(w = 320, h = 240, o = {}) { const c = document.createElement('canvas'); c.style.cssText = `width:${w}px;height:${h}px;display:block`; document.getElementById('host').appendChild(c); return c; },
+  sleep: ms => new Promise(r => setTimeout(r, ms)),
+  raf: (n = 1) => new Promise(r => { const f = () => (--n <= 0 ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); }),
+  // 背景(先頭ピクセル)と異なるピクセルの数
+  nonBg(px) { const r = px[0], g = px[1], b = px[2]; let n = 0; for (let i = 0; i < px.length; i += 4) if (Math.abs(px[i] - r) + Math.abs(px[i + 1] - g) + Math.abs(px[i + 2] - b) > 12) n++; return n; },
+  diff(a, b) { if (a.length !== b.length) return -1; let n = 0; for (let i = 0; i < a.length; i += 4) if (Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) + Math.abs(a[i + 2] - b[i + 2]) > 12) n++; return n; },
+  glErr(e) { return e.gl.getError(); },
+  assert(c, m) { if (!c) throw new Error(m); }
+};
+</script>

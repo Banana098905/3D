@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MASSIVE ENGINE 1.0 — リソース管理</title><link rel="stylesheet" href="assets/demo.css"></head>
+<body>
+<header><h1>MASSIVE ENGINE 1.0 — リソース管理</h1><nav></nav></header>
+<div class="layout">
+<section class="card"><div class="head"><b>アセットの生成・登録・解放 / コンテキスト消失 / 破棄と再生成</b><span id="state" class="note"></span></div>
+<canvas id="world" aria-label="リソース管理デモ"></canvas><div class="foot"><span id="status">初期化中…</span></div></section>
+<aside class="side">
+<section class="card panel"><h2>アセット（参照カウント）</h2>
+<div class="btns"><button id="addTex">テクスチャ生成+参照</button><button id="relTex">参照を解放</button><button id="addGeo">ジオメトリ追加</button><button id="lazy">遅延生成を使用</button><button id="unused">未使用を解放</button></div>
+<pre id="assets" class="code"></pre></section>
+<section class="card panel"><h2>エンジンのライフサイクル</h2>
+<div class="btns"><button id="stop">停止</button><button id="resume">再開</button><button id="dispose">破棄</button><button id="recreate" class="primary">再作成</button><button id="lose">コンテキスト消失を再現</button><button id="restore">復帰</button></div>
+<p class="note">「破棄」→GPUバッファ/テクスチャ/シェーダ/イベントを全解放。「再作成」→同じキャンバスで新規作成。消失→復帰は自動で再開します。</p></section>
+<section class="card panel"><h2>メモリ・数</h2><div id="m" class="metrics"></div><p id="log" class="note"></p></section>
+</aside></div>
+<script type="module">
+import * as ME from '../dist/massive-engine.esm.js';
+import { nav, $, fmt, int, metrics } from './assets/nav.js'; nav('resource-demo.html');
+let engine = null, texN = 0, geoN = 0, cycles = 0; const log = t => { $('log').textContent = new Date().toLocaleTimeString() + ' ' + t; };
+function create() {
+  engine = ME.create({ canvas: $('world'), shadows: false, background: '#0e1522', onError: e => { log('エラー通知 [' + (e.code || e.source || '') + '] ' + e.message); } });
+  window.__demo = { engine, ME, get cycles() { return cycles; } };
+  engine.on('contextlost', () => { $('state').textContent = 'コンテキスト消失中'; }); engine.on('contextrestored', () => { $('state').textContent = '復帰・自動再開'; log('コンテキスト復帰: GPUリソースを再作成して描画再開'); });
+  engine.assets.add('floor', ME.Geometry.plane(14, 14)); engine.assets.add('cube', ME.Geometry.box(1, 1, 1)); engine.assets.add('floorMat', new ME.Material({ color: '#334', map: ME.Texture.checker(128, 8, '#aab', '#667') }));
+  const f = new ME.Mesh(engine.assets.acquire('floor'), engine.assets.acquire('floorMat')); engine.add(f);
+  const c = new ME.Mesh(engine.assets.acquire('cube'), new ME.Material({ color: '#ff8a2a' })); c.setPosition(0, 0.5, 0); engine.add(c);
+  engine.addUpdate((dt, t) => { c.setRotationEuler(0, t, 0); }); texN = 0; geoN = 0;
+  engine.controls.distance = 9; engine.controls.pitch = 0.6; engine.controls.update(); $('state').textContent = '実行中'; $('status').textContent = '準備完了'; refresh();
+}
+function refresh() { if (!engine || engine.disposed) { $('assets').textContent = '(エンジン破棄済み)'; return; } $('assets').textContent = engine.assets.list().map(a => `${a.name.padEnd(18)} ${a.kind.padEnd(9)} 参照=${a.refs}`).join('\n') || '(なし)'; }
+$('addTex').onclick = () => { if (!engine || engine.disposed) return; const k = 'tex' + (++texN); engine.assets.add(k, ME.Texture.checker(512, 16, '#fa0', '#05a')); engine.assets.acquire(k); const m = new ME.Mesh(ME.Geometry.sphere(0.4), new ME.Material({ map: engine.assets.get(k) })); m.name = k; m.setPosition(-3 + texN * 0.9 % 6, 0.4, 2.5); engine.add(m); refresh(); log(k + ' を生成し、参照 +1'); };
+$('relTex').onclick = () => { if (!engine || engine.disposed || !texN) return; const k = 'tex' + texN--; const m = engine.scene.find(k); if (m) { m.removeFromParent(); } engine.assets.release(k); refresh(); log(k + ' の参照を解放（0 になったので GPU テクスチャも解放）'); };
+$('addGeo').onclick = () => { if (!engine || engine.disposed) return; const k = 'geo' + (++geoN); engine.assets.add(k, ME.Geometry.sphere(0.3, 32, 24)); engine.assets.acquire(k); refresh(); };
+$('lazy').onclick = () => { if (!engine || engine.disposed) return; if (!engine.assets.has('lazyTorus')) engine.assets.defer('lazyTorus', () => { log('遅延生成: lazyTorus を初めて生成'); return ME.Geometry.cylinder(0.3, 0.3, 0.2, 48); }); const g = engine.assets.acquire('lazyTorus'); const m = new ME.Mesh(g, new ME.Material({ color: '#6fe28a' })); m.setPosition(2 + Math.random() * 2, 0.1, -2); engine.add(m); refresh(); };
+$('unused').onclick = () => { if (!engine || engine.disposed) return; log('未使用アセット ' + engine.assets.disposeUnused() + ' 個を解放'); refresh(); };
+$('stop').onclick = () => { engine && !engine.disposed && engine.stop(); $('state').textContent = '停止'; }; $('resume').onclick = () => { if (engine && !engine.disposed) { try { engine.resume(); $('state').textContent = '実行中'; } catch (e) { log(e.message); } } };
+$('dispose').onclick = () => { if (engine && !engine.disposed) { engine.dispose(); $('state').textContent = '破棄済み'; log('破棄: GPUリソースとリスナーを解放'); refresh(); } };
+$('recreate').onclick = () => { if (engine && !engine.disposed) engine.dispose(); cycles++; create(); log('再作成（' + cycles + ' 回目）'); };
+$('lose').onclick = () => { const e = engine && engine.gl.getExtension('WEBGL_lose_context'); if (e) e.loseContext(); else log('WEBGL_lose_context が使えない環境です'); };
+$('restore').onclick = () => { const e = engine && engine.gl.getExtension('WEBGL_lose_context'); if (e) e.restoreContext(); };
+create();
+setInterval(() => { if (!engine || engine.disposed) { metrics($('m'), [['状態', '破棄済み']]); return; } const s = engine.getStats(), b = engine.renderer.gpuBytesBreakdown; metrics($('m'), [['ジオメトリ(GPU)', s.geometries + ' / ' + fmt(b.geo / 1024, 1) + ' KB'], ['テクスチャ(GPU)', s.textures + ' / ' + fmt(b.tex / 1024, 1) + ' KB'], ['プログラム', s.programs], ['GPUメモリ推定', fmt(s.gpuBytes / 1048576, 1) + ' MB'], ['JSヒープ', s.jsHeapMB == null ? '— (非対応)' : fmt(s.jsHeapMB, 1) + ' MB'], ['アセット', engine.assets.stats().count]]); refresh(); }, 500);
+window.addEventListener('pagehide', () => engine && engine.dispose(), { once: true });
+</script></body></html>

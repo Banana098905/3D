@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MASSIVE ENGINE 1.0 — 基本3Dシーン</title><link rel="stylesheet" href="assets/demo.css"></head>
+<body>
+<header><h1>MASSIVE ENGINE 1.0 — 基本3Dシーン</h1><nav></nav></header>
+<div class="layout">
+<section class="card"><div class="head"><div><b>メッシュ・テクスチャ・ライト・影・透明・ピッキング</b><div class="note" style="margin:0">ドラッグ=回転 / 右ドラッグ=移動 / ホイール=ズーム / クリック=選択</div></div><div id="picked" class="note">選択: なし</div></div>
+<canvas id="world" aria-label="基本的な3Dシーン"></canvas>
+<div class="foot"><span id="status">初期化中…</span></div></section>
+<aside class="side">
+<section class="card panel"><h2>設定の変更</h2>
+<div class="row"><label for="q">品質プリセット</label><select id="q"><option>low</option><option>medium</option><option selected>high</option><option>ultra</option></select></div>
+<div class="row"><label for="shadow">影</label><input id="shadow" type="checkbox" checked></div>
+<div class="row"><label for="scale">描画解像度</label><input id="scale" type="range" min="0.3" max="1.5" step="0.1" value="1" style="width:55%"></div>
+<div class="row"><label for="anim">アニメーション</label><input id="anim" type="checkbox" checked></div>
+<div class="row"><label for="persp">オルソ投影</label><input id="persp" type="checkbox"></div>
+<div class="btns"><button id="save">シーンJSON保存</button><button id="load">保存から復元</button><button id="clear">全削除</button></div>
+<p id="io" class="status"></p></section>
+<section class="card panel"><h2>統計</h2><div id="m" class="metrics"></div>
+<p class="note">GPU時間は EXT_disjoint_timer_query_webgl2 が使える環境のみ表示します。使えない場合は「—」で、CPU時間やフレーム間隔とは別物です。</p></section>
+</aside></div>
+<script type="module">
+import * as ME from '../dist/massive-engine.esm.js';
+import { nav, $, fmt, int, metrics } from './assets/nav.js'; nav('basic-scene.html');
+let engine; try {
+  engine = ME.create({ canvas: $('world'), shadows: true, background: '#0e1522', onError: e => { $('status').textContent = 'エラー: ' + e.message; $('status').className = 'status err'; } });
+} catch (e) { $('status').textContent = '初期化に失敗: ' + e.message; throw e; }
+window.__demo = { engine, ME };
+const sun = engine.scene.children.find(c => c.type === 'DirectionalLight'); sun.castShadow = true; sun.shadow.extent = 14;
+const checker = ME.Texture.checker(256, 16, '#e8ecf4', '#8a96ad');
+engine.addPlane({ width: 40, depth: 40, color: '#ffffff', map: checker, name: '床' });
+const box = engine.addBox({ position: [-2.5, 0.75, 0], size: [1.5, 1.5, 1.5], color: '#ff8a2a', castShadow: true, receiveShadow: true, name: '箱' });
+const sphere = engine.addSphere({ position: [0, 0.8, 0], radius: 0.8, color: '#3aa0ff', castShadow: true, receiveShadow: true, name: '球' });
+const cyl = engine.addCylinder({ position: [2.5, 0.9, 0], height: 1.8, radiusTop: 0.4, radiusBottom: 0.7, color: '#6fe28a', castShadow: true, receiveShadow: true, name: '円柱' });
+const glass = engine.addSphere({ position: [0.8, 0.6, 2.6], radius: 0.6, color: '#ff5577', opacity: 0.45, name: '半透明の球' });
+const lamp = new ME.PointLight('#ffcf80', 1.6, 9); lamp.setPosition(-1, 2.2, 2); engine.add(lamp);
+const cubes = new ME.InstancedMesh(ME.Geometry.box(0.28, 0.28, 0.28), new ME.Material({ color: '#fff' }), { count: 600, castShadow: true, receiveShadow: true, spin: true, name: '立方体の群れ' });
+for (let i = 0; i < 600; i++) { const a = i * 0.45, r = 4 + (i % 30) * 0.12; cubes.setPositionAt(i, Math.cos(a) * r, 0.2 + (i % 5) * 0.08, Math.sin(a) * r - 1); cubes.setColorAt(i, 0.4 + 0.6 * Math.abs(Math.sin(a)), 0.5, 1 - 0.5 * Math.abs(Math.sin(a))); cubes.setPhaseAt(i, i); }
+engine.add(cubes);
+engine.controls.distance = 13; engine.controls.pitch = 0.5; engine.controls.update();
+let animOn = true; const stop = engine.addUpdate((dt, t) => { if (!animOn) return; sphere.position[1] = 0.8 + Math.abs(Math.sin(t * 2)) * 0.9; box.setRotationEuler(0, t * 0.8, 0); lamp.position[0] = Math.sin(t) * 3; });
+let sel = null;
+engine.on('click', ev => {
+  const hit = engine.pick(ev.originalEvent.clientX, ev.originalEvent.clientY);
+  if (sel && sel.material) sel.material.emissive = [0, 0, 0];
+  if (hit && hit.object.type === 'Mesh') { sel = hit.object; sel.material.emissive = [0.25, 0.25, 0.1]; $('picked').textContent = `選択: ${sel.name || 'Mesh'} / 距離 ${fmt(hit.distance)}`; }
+  else if (hit) { sel = null; $('picked').textContent = `選択: ${hit.object.name} #${hit.instanceId}`; }
+  else { sel = null; $('picked').textContent = '選択: なし'; }
+});
+$('q').onchange = e => engine.setQuality(e.target.value);
+$('shadow').onchange = e => engine.setOptions({ shadows: e.target.checked });
+$('scale').oninput = e => engine.setOptions({ renderScale: Number(e.target.value) });
+$('anim').onchange = e => { animOn = e.target.checked; };
+$('persp').onchange = e => { engine.camera = e.target.checked ? Object.assign(new ME.OrthographicCamera(14, -200, 200), { }) : new ME.PerspectiveCamera(50, 0.1, 5000); engine.controls.camera = engine.camera; engine.controls.update(); };
+let saved = null;
+$('save').onclick = () => { saved = engine.saveSceneString(); $('io').textContent = `保存しました（${(saved.length / 1024).toFixed(1)} KB）。` + (engine.lastSaveWarnings.length ? ' 警告: ' + engine.lastSaveWarnings.join(' / ') : ''); };
+$('load').onclick = () => { if (!saved) { $('io').textContent = '先に保存してください。'; return; } try { stop(); engine.loadScene(saved); $('io').textContent = '復元しました（アニメーション更新は解除）。'; } catch (e) { $('io').textContent = '復元に失敗: ' + e.message; } };
+$('clear').onclick = () => { for (const c of engine.scene.children.slice()) { c.traverse(n => n.disposeResources && n.disposeResources()); c.removeFromParent(); } $('io').textContent = '全削除しました。'; };
+const mEl = $('m');
+setInterval(() => { const s = engine.getStats(); metrics(mEl, [['FPS', fmt(s.fps, 1)], ['フレーム間隔', fmt(s.frameMs) + ' ms'], ['CPU処理', fmt(s.cpuMs) + ' ms'], ['GPU処理', s.gpuMs == null ? '—' : fmt(s.gpuMs) + ' ms'], ['描画コール', s.drawCalls + ' (+影 ' + s.shadowDrawCalls + ')'], ['三角形', int(s.triangles)], ['インスタンス', int(s.instances)], ['カリング(物/チャンク)', s.culledObjects + '/' + s.culledChunks], ['GPUメモリ推定', fmt(s.gpuBytes / 1048576, 1) + ' MB'], ['解像度', s.canvasWidth + '×' + s.canvasHeight]]); }, 400);
+$('status').textContent = '準備完了';
+window.addEventListener('pagehide', () => engine.dispose(), { once: true });
+</script></body></html>
