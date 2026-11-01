@@ -21,6 +21,8 @@ export class Material {
     this.depthTest = o.depthTest !== false;
     this.depthWrite = o.depthWrite === undefined ? !this.transparent : !!o.depthWrite;
     this.alphaTest = o.alphaTest || 0;
+    /** 'normal' | 'additive'（透明描画のときの合成方法。additive は光の粒・発光エフェクト向け） */
+    this.blending = o.blending === 'additive' ? 'additive' : 'normal';
   }
   setColor(c) { parseColor(c, this.color); return this; }
   clone() { const m = new Material(this); m.color = this.color.slice(); m.emissive = this.emissive.slice(); return m; }

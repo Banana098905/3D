@@ -174,7 +174,7 @@ export class InstancedMesh extends Node {
     m.set(this.matrices); c.set(this.colors);
     this.matrices = m; this.colors = c; this.capacity = cap;
     const nch = Math.ceil(cap / this.chunkSize);
-    while (this.chunks.length < nch) this.chunks.push({ boundsDirty: true, uploadDirty: true, min: new Float64Array(3), max: new Float64Array(3), radius: 0, center: new Float64Array(3) });
+    while (this.chunks.length < nch) this.chunks.push({ boundsDirty: true, uploadDirty: true, dLo: 0, dHi: this.chunkSize, min: new Float64Array(3), max: new Float64Array(3), radius: 0, center: new Float64Array(3) });
   }
   setCount(n) {
     n = Math.max(0, Math.floor(n));
@@ -185,12 +185,14 @@ export class InstancedMesh extends Node {
     this.markInstancesDirty(Math.min(old, n), Math.max(old, n));
     return this;
   }
-  _touch(i) { const ch = this.chunks[(i / this.chunkSize) | 0]; ch.boundsDirty = true; ch.uploadDirty = true; }
+  /** チャンク内の「GPU へ再転送が必要な範囲」[dLo, dHi) を広げる。範囲外の部分は転送しない（バッファ更新量の削減）。 */
+  _dirtyRange(ch, lo, hi) { if (!ch.uploadDirty) { ch.dLo = lo; ch.dHi = hi; } else { if (lo < ch.dLo) ch.dLo = lo; if (hi > ch.dHi) ch.dHi = hi; } ch.uploadDirty = true; }
+  _touch(i) { const c = (i / this.chunkSize) | 0, ch = this.chunks[c], l = i - c * this.chunkSize; ch.boundsDirty = true; this._dirtyRange(ch, l, l + 1); }
   /** matrices / colors を直接書き換えた範囲 [start,end) を通知する（チャンク境界の再計算とGPU再転送が行われる）。 */
   markInstancesDirty(start = 0, end = this.count) {
     if (end <= start) { end = start + 1; }
     const a = (start / this.chunkSize) | 0, b = Math.min(this.chunks.length - 1, ((Math.max(start, end - 1)) / this.chunkSize) | 0);
-    for (let c = a; c <= b; c++) { this.chunks[c].boundsDirty = true; this.chunks[c].uploadDirty = true; }
+    for (let c = a; c <= b; c++) { const ch = this.chunks[c], cs = c * this.chunkSize; ch.boundsDirty = true; this._dirtyRange(ch, Math.max(start, cs) - cs, Math.min(Math.max(end, start + 1), cs + this.chunkSize) - cs); }
     return this;
   }
   _check(i) { if (!(i >= 0 && i < this.count) || i !== (i | 0)) throw new RangeError('InstancedMesh: インスタンス番号が範囲外です: ' + i + ' (count=' + this.count + ')'); }

@@ -16,17 +16,17 @@ export class WebGL2Renderer {
     this.gl = gl; this.disposed = false; this.lost = false;
     this._resources = new Set(); this.frustum = new Frustum(); this._lists = { lights: [], meshes: [], instanced: [] };
     this._opaque = []; this._transp = []; this._frame = 0; this._pass = 0;
-    this.stats = { drawCalls: 0, triangles: 0, instances: 0, visibleObjects: 0, culledObjects: 0, visibleChunks: 0, culledChunks: 0, shadowDrawCalls: 0, uploadMs: 0, programs: 0, geometries: 0, textures: 0, gpuBytes: 0, shadows: false, gpuMs: null, gpuTimer: false };
+    this.stats = { drawCalls: 0, triangles: 0, instances: 0, visibleObjects: 0, culledObjects: 0, visibleChunks: 0, culledChunks: 0, shadowDrawCalls: 0, uploadMs: 0, uploadBytes: 0, vertices: 0, textureBytes: 0, visibilityCulled: 0, programs: 0, geometries: 0, textures: 0, gpuBytes: 0, shadows: false, gpuMs: null, gpuTimer: false };
     this._init();
   }
   _init() {
     const gl = this.gl;
     this.programs = new Map(); this._bytes = { geo: 0, tex: 0, inst: 0, shadow: 0 };
-    this._st = { prog: null, vao: null, depthTest: null, depthWrite: null, blend: null, cull: null, tex0: null, tex1: null };
+    this._st = { prog: null, vao: null, depthTest: null, depthWrite: null, blend: null, additive: false, cull: null, tex0: null, tex1: null };
     gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL); gl.enable(gl.CULL_FACE); gl.cullFace(gl.BACK);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     gl.vertexAttrib3f(1, 0, 1, 0); gl.vertexAttrib2f(2, 0, 0); gl.vertexAttrib3f(3, 1, 1, 1);
-    this._white = null; this._shadow = null; this._shadowFailed = false;
+    this._white = null; this._shadow = null; this._shadowFailed = false; if (this.visibilityFilter === undefined) this.visibilityFilter = null;
     this._aniso = gl.getExtension('EXT_texture_filter_anisotropic');
     const ext = gl.getExtension('EXT_disjoint_timer_query_webgl2');
     this._timer = ext ? { ext, pending: [], active: null } : null; this.stats.gpuTimer = !!ext; this.stats.gpuMs = null;
@@ -128,15 +128,20 @@ export class WebGL2Renderer {
       cg = { matBuf: gl.createBuffer(), colBuf: gl.createBuffer(), vaos: [] };
       gl.bindBuffer(gl.ARRAY_BUFFER, cg.matBuf); gl.bufferData(gl.ARRAY_BUFFER, mesh.chunkSize * 64, usage);
       gl.bindBuffer(gl.ARRAY_BUFFER, cg.colBuf); gl.bufferData(gl.ARRAY_BUFFER, mesh.chunkSize * 16, usage);
-      this._bytes.inst += mesh.chunkSize * 80; ig.chunks[c] = cg; mesh.chunks[c].uploadDirty = true;
+      this._bytes.inst += mesh.chunkSize * 80; ig.chunks[c] = cg; mesh.chunks[c].uploadDirty = true; mesh.chunks[c].dLo = 0; mesh.chunks[c].dHi = mesh.chunkSize; // 新しいバッファは全体を転送
     }
     return cg;
   }
   _uploadChunk(mesh, c, cg) {
-    const gl = this.gl, t0 = now(), s = c * mesh.chunkSize, n = Math.min(mesh.chunkSize, mesh.count - s);
-    gl.bindBuffer(gl.ARRAY_BUFFER, cg.matBuf); gl.bufferSubData(gl.ARRAY_BUFFER, 0, mesh.matrices, s * 16, n * 16);
-    gl.bindBuffer(gl.ARRAY_BUFFER, cg.colBuf); gl.bufferSubData(gl.ARRAY_BUFFER, 0, mesh.colors, s * 4, n * 4);
-    mesh.chunks[c].uploadDirty = false; this.stats.uploadMs += now() - t0;
+    const gl = this.gl, t0 = now(), ch = mesh.chunks[c], s = c * mesh.chunkSize, n = Math.min(mesh.chunkSize, mesh.count - s);
+    // 変更のあった範囲 [lo, hi) だけを転送する（全体が変わったときは全体）
+    const lo = Math.max(0, Math.min(ch.dLo, n)), hi = Math.min(n, Math.max(ch.dHi, lo)), cnt = hi - lo;
+    if (cnt > 0) {
+      gl.bindBuffer(gl.ARRAY_BUFFER, cg.matBuf); gl.bufferSubData(gl.ARRAY_BUFFER, lo * 64, mesh.matrices, (s + lo) * 16, cnt * 16);
+      gl.bindBuffer(gl.ARRAY_BUFFER, cg.colBuf); gl.bufferSubData(gl.ARRAY_BUFFER, lo * 16, mesh.colors, (s + lo) * 4, cnt * 4);
+      this.stats.uploadBytes += cnt * 80;
+    }
+    ch.uploadDirty = false; ch.dLo = 0; ch.dHi = 0; this.stats.uploadMs += now() - t0;
   }
   _chunkVao(cg, level, g) {
     const gl = this.gl; let e = cg.vaos[level];
@@ -200,6 +205,7 @@ export class WebGL2Renderer {
     if (st.depthTest !== dt) { dt ? gl.enable(gl.DEPTH_TEST) : gl.disable(gl.DEPTH_TEST); st.depthTest = dt; }
     if (st.depthWrite !== dw) { gl.depthMask(dw); st.depthWrite = dw; }
     if (st.blend !== bl) { bl ? gl.enable(gl.BLEND) : gl.disable(gl.BLEND); st.blend = bl; }
+    if (bl) { const add = mat.blending === 'additive'; if (st.additive !== add) { add ? gl.blendFunc(gl.SRC_ALPHA, gl.ONE) : gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); st.additive = add; } }
     if (st.cull !== cu) { cu ? gl.enable(gl.CULL_FACE) : gl.disable(gl.CULL_FACE); st.cull = cu; }
   }
   _flagsFor(mesh, geo, mat, instanced, shadowRecv) {
@@ -234,7 +240,7 @@ export class WebGL2Renderer {
     this._setMaterial(p, mat, depth);
     this._bindVAO(g.vao);
     if (g.index) gl.drawElements(g.mode, g.count, g.indexType, 0); else gl.drawArrays(g.mode, 0, g.count);
-    if (depth) this.stats.shadowDrawCalls++; else { this.stats.drawCalls++; this.stats.triangles += geo.triangleCount; }
+    if (depth) this.stats.shadowDrawCalls++; else { this.stats.drawCalls++; this.stats.triangles += geo.triangleCount; this.stats.vertices += geo.vertexCount; }
   }
   _drawInstanced(mesh, ctx, depth, lightSphere) {
     const gl = this.gl, mat = mesh.material, ig = this._inst(mesh), w = mesh._world;
@@ -260,7 +266,7 @@ export class WebGL2Renderer {
       if (ch.uploadDirty) this._uploadChunk(mesh, c, cg);
       this._bindVAO(this._chunkVao(cg, level, g));
       if (g.index) gl.drawElementsInstanced(g.mode, g.count, g.indexType, 0, n); else gl.drawArraysInstanced(g.mode, 0, g.count, n);
-      if (depth) this.stats.shadowDrawCalls++; else { this.stats.drawCalls++; this.stats.triangles += lgeo.triangleCount * n; this.stats.instances += n; this.stats.visibleChunks++; }
+      if (depth) this.stats.shadowDrawCalls++; else { this.stats.drawCalls++; this.stats.triangles += lgeo.triangleCount * n; this.stats.vertices += lgeo.vertexCount * n; this.stats.instances += n; this.stats.visibleChunks++; }
     }
   }
 
@@ -273,7 +279,7 @@ export class WebGL2Renderer {
     const gl = this.gl;
     if (this.disposed) throw new MassiveEngineError('レンダラは破棄済みです。', 'E_DISPOSED');
     if (this.lost || gl.isContextLost()) return false;
-    const st = this.stats; st.drawCalls = 0; st.triangles = 0; st.instances = 0; st.visibleObjects = 0; st.culledObjects = 0; st.visibleChunks = 0; st.culledChunks = 0; st.shadowDrawCalls = 0; st.uploadMs = 0;
+    const st = this.stats; st.drawCalls = 0; st.triangles = 0; st.instances = 0; st.visibleObjects = 0; st.culledObjects = 0; st.visibleChunks = 0; st.culledChunks = 0; st.shadowDrawCalls = 0; st.uploadMs = 0; st.uploadBytes = 0; st.vertices = 0; st.visibilityCulled = 0;
     this._frame++;
     scene.updateMatrices();
     const W = this.canvas.width, H = this.canvas.height;
@@ -340,6 +346,7 @@ export class WebGL2Renderer {
     const opaque = this._opaque, transp = this._transp; opaque.length = 0; transp.length = 0;
     for (const m of lists.meshes) {
       if (m.frustumCulled) { m.updateWorldBounds(); if (!this.frustum.intersectsAABB(m.wmin, m.wmax)) { st.culledObjects++; continue; } }
+      if (this.visibilityFilter && !this.visibilityFilter(m, camera)) { st.visibilityCulled++; continue; } // 追加の可視判定フック（オクルージョンカリング等を外部から接続できる）
       st.visibleObjects++;
       (m.material.transparent ? transp : opaque).push(m);
     }
@@ -351,7 +358,7 @@ export class WebGL2Renderer {
     for (const o of transp) { this._renderState(o.material, true); o.type === 'Mesh' ? this._drawMesh(o, base, false) : this._drawInstanced(o, base, false); }
     this._bindVAO(null);
     this._timerEnd();
-    st.gpuBytes = this._bytes.geo + this._bytes.tex + this._bytes.inst + this._bytes.shadow + W * H * 8;
+    st.textureBytes = this._bytes.tex; st.gpuBytes = this._bytes.geo + this._bytes.tex + this._bytes.inst + this._bytes.shadow + W * H * 8;
     return true;
   }
 

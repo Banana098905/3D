@@ -13,6 +13,18 @@ import { Ray, raycast, rayFromCamera } from './raycast.js';
 import { serializeScene, deserializeScene, SCENE_FORMAT, SCENE_VERSION } from './scene-io.js';
 import { VoxelWorld } from './voxel.js';
 import { ParticleField } from './presets.js';
+import { CollisionWorld, EVENT_START, EVENT_STAY, EVENT_END, EVENT_TRIGGER_ENTER, EVENT_TRIGGER_STAY, EVENT_TRIGGER_EXIT, COLLIDER_SPHERE, COLLIDER_AABB, COLLIDER_OBB, COLLIDER_CAPSULE, COLLIDER_PLANE, Contact, RayHit, collide, rayShape, sweepSphere, pointDistance, BruteForceBroadphase, SpatialHashBroadphase, TreeBroadphase, DynamicTree } from './collision/index.js';
+import { HandleAllocator, HandlePool } from './handles.js';
+import { FixedTimestep, Interpolator } from './timestep.js';
+import { Profiler, StatWindow } from './profiler.js';
+import { Easing, Track, AnimationClip, Animator } from './animation.js';
+import { ParticleSystem } from './particles.js';
+import { InputManager } from './input.js';
+import { AudioSystem } from './audio.js';
+import { ResourceManager, parseOBJ, validateGeometry, mergeGeometries } from './resources.js';
+import { DebugDraw } from './debug.js';
+import { RigidBodyWorld, BODY_STATIC, BODY_DYNAMIC, BODY_KINEMATIC, generateManifold, DistanceConstraint, BallSocketConstraint, computeLocalInertia } from './rigid/index.js';
+const EXTRA = { CollisionWorld, EVENT_START, EVENT_STAY, EVENT_END, EVENT_TRIGGER_ENTER, EVENT_TRIGGER_STAY, EVENT_TRIGGER_EXIT, COLLIDER_SPHERE, COLLIDER_AABB, COLLIDER_OBB, COLLIDER_CAPSULE, COLLIDER_PLANE, Contact, RayHit, collide, rayShape, sweepSphere, pointDistance, BruteForceBroadphase, SpatialHashBroadphase, TreeBroadphase, DynamicTree, HandleAllocator, HandlePool, FixedTimestep, Interpolator, Profiler, StatWindow, Easing, Track, AnimationClip, Animator, ParticleSystem, InputManager, AudioSystem, ResourceManager, parseOBJ, validateGeometry, mergeGeometries, DebugDraw, RigidBodyWorld, BODY_STATIC, BODY_DYNAMIC, BODY_KINEMATIC, generateManifold, DistanceConstraint, BallSocketConstraint, computeLocalInertia };
 
 export const create = options => new Engine(options);
 export {
@@ -21,9 +33,10 @@ export {
   OrbitControls, PhysicsWorld, SHAPE_SPHERE, SHAPE_BOX, AssetManager, AdaptiveQuality, QUALITY_PRESETS, Ray, raycast, rayFromCamera,
   serializeScene, deserializeScene, SCENE_FORMAT, SCENE_VERSION, VoxelWorld, ParticleField
 };
+export { CollisionWorld, EVENT_START, EVENT_STAY, EVENT_END, EVENT_TRIGGER_ENTER, EVENT_TRIGGER_STAY, EVENT_TRIGGER_EXIT, COLLIDER_SPHERE, COLLIDER_AABB, COLLIDER_OBB, COLLIDER_CAPSULE, COLLIDER_PLANE, Contact, RayHit, collide, rayShape, sweepSphere, pointDistance, BruteForceBroadphase, SpatialHashBroadphase, TreeBroadphase, DynamicTree, HandleAllocator, HandlePool, FixedTimestep, Interpolator, Profiler, StatWindow, Easing, Track, AnimationClip, Animator, ParticleSystem, InputManager, AudioSystem, ResourceManager, parseOBJ, validateGeometry, mergeGeometries, DebugDraw, RigidBodyWorld, BODY_STATIC, BODY_DYNAMIC, BODY_KINEMATIC, generateManifold, DistanceConstraint, BallSocketConstraint, computeLocalInertia };
 const API = Object.freeze({
   create, Engine, isSupported, version: VERSION, MassiveEngineError, Pool, JobQueue, Emitter, mat4, quat, vec3, Geometry, Texture, Material,
   Node, Group, Scene, Mesh, InstancedMesh, AmbientLight, DirectionalLight, PointLight, PerspectiveCamera, OrthographicCamera, createGridHelper,
-  OrbitControls, PhysicsWorld, AssetManager, QUALITY_PRESETS, Ray, raycast, rayFromCamera, serializeScene, deserializeScene, VoxelWorld, ParticleField
+  OrbitControls, PhysicsWorld, AssetManager, QUALITY_PRESETS, Ray, raycast, rayFromCamera, serializeScene, deserializeScene, VoxelWorld, ParticleField, ...EXTRA
 });
 export default API;

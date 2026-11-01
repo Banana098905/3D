@@ -152,3 +152,66 @@ world.bindInstanced(instancedMesh, firstBodyId, count);     // 連続した ID �
 
 ## 9. 旧 API（試作版 2.0 互換）
 `create({canvas, count, gridCellSize})` と `setCount / setSpeed / setGridCellSize / reset / count / gridCellSize / cubeRotation / getStats()` の旧キー（`fps, frameMs, stepMs, candidatePairs, overlaps, uploadMs, count`）。詳細は [MIGRATION.md](MIGRATION.md)。
+
+
+---
+# 1.1 追加 API（すべて opt-in。詳細な挙動は src/ の先頭コメントも参照）
+
+## `CollisionWorld`（`engine.enableCollision(opts)` で作成、または単体で `new CollisionWorld(opts)`）
+オプション: `broadphase:'hash'|'tree'|'brute'|'auto'`, `cellSize`, `maxSpan`, `fatMargin`, `emitStay`, `onEvent`, `ccdClamp`, `checkDuplicates`, `onWarning`。
+```js
+const w = new CollisionWorld({ broadphase: 'hash' });
+const a = w.addSphere({ position:[0,0,0], radius:1, layer:1, mask:0xffffffff, userData:{} });
+const b = w.addAABB({ position:[3,0,0], halfExtents:[1,1,1], static:true });
+w.addOBB({ position, halfExtents, rotation:[x,y,z,w] }); w.addCapsule({ position, radius, halfLength | height, rotation });
+w.addPlane({ normal:[0,1,0], offset:0 }); w.addMany([...descs]);
+w.onEvent = e => { /* e.type（EVENT_START 等の文字列定数）, e.a / e.b（ハンドル）, e.trigger, 接触: e.nx,ny,nz（a→b）, e.depth, e.px,py,pz, e.toi（CCD 時）, e.userA / e.userB。
+                        e は step ごとに再利用されるオブジェクトです（次の step まで有効）。保持したい場合は値をコピーしてください */ };
+w.setPosition(a, x,y,z);  w.teleport(a, x,y,z);  // teleport は CCD 掃引をしない
+w.setRotation / setTransform / setSize / setFilter(h, layer, mask) / setEnabled / setTrigger / setStatic / remove / removeMany
+const stats = w.step();   // { stepMs, broadMs, narrowMs, ccdMs, broadTests, candidatePairs, contacts, newPairs, endedPairs, ccdHits, ... }
+w.raycast(ox,oy,oz, dx,dy,dz, maxDistance, mask, triggers, out) / raycastAll(..., maxHits) / queryAABB(x0,y0,z0,x1,y1,z1, mask, triggers, out) / queryRadius(x,y,z,r, mask, triggers, out) / sweepSphere(x,y,z,r, dx,dy,dz, mask, triggers, out) / testPair(ha, hb)
+w.getTouching(h) / forEachContact(fn) / forEachShape(fn) / setBroadphase('tree') / dispose()
+```
+- ハンドルは世代付きの数値。削除後に再利用されたスロットでも、古いハンドルは必ず無効（`isValid` が false、操作は例外）。
+- `continuous:true`（球のみ）で、`step()` 時に前回位置→今回位置を掃引して貫通を検出します。
+- イベント順序は広域方式に依存せず決定的です。
+
+## 時間
+`new FixedTimestep({fixedDt, maxSubSteps, maxFrameDt, timeScale})`: `update(realDt, stepFn)`, `pause()/resume()/stepOnce(fn)/setTimeScale()/reset()`, `alpha`, `simTime`, `droppedTime`。
+`new Interpolator(count, {rotations})`: `capture(pos, quat)`, `lerp(out, alpha)`, `slerp(out, alpha)`。
+
+## プロファイラ
+`engine.enableProfiler()` → `engine.profiler`: `begin/end/scope`, `record`, `gauge`, `unsupported(name, reason)`, `endFrame()`, `snapshot()`, `toCSV()`, `historyCSV()`, `Profiler.compare(before, after)`。
+自動で集計: `frame, cpu, update, render, gpu, drawCalls, triangles, instances, uploadBytes, collision*, jsHeapMB`。`gpu`/`jsHeapMB` が測れない環境では `supported:false`・値 `null`。
+
+## アニメーション
+`new AnimationClip(name, {loop:'repeat'|'once'|'pingpong', tracks:[{path:'position'|'rotation'|'scale'|'value:名前', keys:[{time, value, easing}]}], events:[{time,name}]})`、
+`new Animator(node)`: `addClip, play(clip,{fade,speed,loop}), stop, addState, go(state,{fade}), pause/resume, update(dt)`。イベント `'event'` `'loop'` `'finished'`。`engine.addAnimator(a)` で自動更新。
+
+## パーティクル
+`new ParticleSystem({capacity, glow, gravity, drag, size, color, sizeOverLife, seed, geometry, material})`: `emit({x,y,z,count,speed,spread,direction,life,size,color,radius})`, `update(dt)`, `stats()`, `clear()`。`engine.add(ps.mesh); engine.addSystem(ps)`。
+
+## 入力 / 音声 / リソース / デバッグ
+- `InputManager`: `bindAction(name, ['key:Space','mouse:0','pad:button:0','touch'])`, `actionDown/Pressed/Released`, `bindAxis(name,{negative,positive,pad})`, `axis(name)`, `poll()`（毎フレーム先頭）, `endFrame()`（末尾）, `touches`, `mouse`, `pad`。
+- `AudioSystem`: `unlock()`, `load(name,url)`, `play(name,{volume,position,loop,rate})`, `playMusic/stopMusic`, `setVolume('master'|'sfx'|'music', v)`, `setListener`, `pause()/resume()`。AudioContext が無い環境では安全な no-op。
+- `ResourceManager`（`AssetManager` の拡張）: `loadOBJ/loadText/loadJSON/loadArrayBuffer`, `material(opts)`（同設定は共有）, `stats()`。`parseOBJ`, `validateGeometry`, `mergeGeometries(geos, mats)`。
+- `DebugDraw`（`engine.enableDebugDraw()`）: `enabled=false` が既定。`line/point/aabb/sphere/obb/capsule/ray/text/collisionWorld(w)`、`flush()`（Engine 経由なら描画後に自動）。
+
+## 描画の追加
+`Material({blending:'additive'})`、`engine.renderer.visibilityFilter = (mesh, camera) => boolean`（false で描画から除外。オクルージョン判定を外部から接続する口）、`InstancedMesh.markInstancesDirty(start,end)`（直接書き換えた範囲だけ転送）。
+
+## `RigidBodyWorld`（1.2、`engine.enableRigidBodyPhysics(opts)` または `new RigidBodyWorld(opts)`）
+詳細は [RIGID_BODY.md](RIGID_BODY.md)。未知のオプション名は `RangeError`。
+- **オプション（既定）**: `gravity [0,-9.81,0]`, `fixedTimeStep 1/60`, `maxSubSteps 8`, `maxFrameDt 0.25`, `stepBudgetMs 0`(無効), `solverIterations 10`, `positionIterations 3`, `restitutionThreshold 1`, `contactMargin 0.02`, `linearSlop 0.005`, `positionCorrection 0.2`, `maxPushSpeed 5`, `warmStarting true`, `gyroscopic true`, `contactAngularDamping 1.0`, `enableSleeping true`, `sleepLinearThreshold 0.05`, `sleepAngularThreshold 0.05`, `sleepTime 0.5`, `ccd true`, `ccdThreshold 0.5`, `maxLinearSpeed 500`, `maxAngularSpeed 200`, `broadphase 'auto'|'hash'|'tree'|'brute'`, `bruteForceThreshold 24`, `interpolate false`, `autoUnbindRemovedNodes true`, `onWarning`, `onContactBegin(a,b,sensor)`, `onContactEnd(a,b,sensor)`。
+- **生成/削除**: `addBody(desc)`（`type 'static'|'dynamic'|'kinematic'`, `shape 'sphere'|'box'|'obb'|'capsule'|'plane'`, `radius`, `halfExtents`, `halfLength`, `normal`+`offset`, `position`, `orientation[x,y,z,w]`, `velocity`, `angularVelocity`, `mass|density`, `restitution`, `friction|staticFriction|dynamicFriction`, `linearDamping`, `angularDamping`, `gravityScale`, `group`, `mask`, `sensor`, `lockRotation`, `ccd`, `allowSleep`, `userData`, `node`）→ ハンドル。`addBodies([...])`, `removeBody(h)`, `removeBodies([...])`, `clear()`, `dispose()`。不正値は `RangeError`、無効ハンドルは false/null。
+- **取得**: `getPosition/Orientation/LinearVelocity/AngularVelocity/Mass/Inertia/InertiaWorld/InverseInertiaWorld/Type/UserData(h)`, `isSleeping(h)`, `isValid(h)`, `bodyCount`, `stateHash()`, `getStats()`。
+- **設定**: `setPosition(h,x,y,z)`, `setOrientation(h,x,y,z,w)`, `setLinearVelocity`, `setAngularVelocity`, `setMass(h,m)`, `setMaterial(h,{...})`, `setCollisionFilter`, `setType(h,type,mass?)`, `setKinematicTarget(h,x,y,z,qx,qy,qz,qw,seconds)`。
+- **力**: `applyForce(h,fx,fy,fz)`, `applyTorque`, `applyForceAtPoint(h,fx,fy,fz,px,py,pz)`, `applyImpulse`, `applyImpulseAtPoint(h,ix,iy,iz,px,py,pz)`, `applyAngularImpulse`（力・トルクは毎ステップクリア）。
+- **スリープ**: `wakeUp(h)`, `sleep(h)`。
+- **時間**: `advance(realDt)`→実行ステップ数, `step(fixedDt)`, `pause()`, `resume()`, `setTimeScale(s)`, `alpha`, `stepCount`。
+- **Node**: `bindNode(h,node)`, `unbindNode(h)`, `getNode(h)`, `syncTransforms()`, `getRenderPosition(h)`, `getRenderOrientation(h)`（補間・状態を変えない）。
+- **拘束**: `addConstraint(c)`, `removeConstraint(c)`（`DistanceConstraint`/`BallSocketConstraint`、実験的）。
+- **クエリ**: `raycast(origin, dir, maxDist)`, `queryAABB(minx,miny,minz,maxx,maxy,maxz,cb)`, `forEachBody`, `forEachContact`。
+- **統計**: `bodies, activeBodies, sleepingBodies, staticBodies, kinematicBodies, candidatePairs, contactPairs, contactPoints, solverIterations, positionIterations, solverMs, broadphaseMs, narrowphaseMs, integrationMs, ccdCount, ccdMs, maxPenetration, droppedTime, stepMs, substeps, truncatedSteps, unsupportedPairs, unboundNodes`（CPU 時間のみ）。
+- **デバッグ描画**: `DebugDraw.rigidBodyWorld(w, {enabled:true, ...})`（既定 OFF）。

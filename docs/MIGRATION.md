@@ -27,3 +27,31 @@ const engine = MassiveEngine.create({ canvas });
 const world = engine.enablePhysics({ planar: true, gravity:[0,0,0] });
 ```
 試作版で測定していた設定（セル幅 0.60、アクティブセルのみ走査、隣接オフセット事前計算）は、新物理でも既定動作として維持しています（自動セル幅が 0.60 を再現）。
+
+
+---
+# 1.0 → 1.1
+
+**破壊的変更はありません。** 1.0 のコードはそのまま動きます（既存の単体 66 件・ブラウザ 28 件のテストは変更なしで PASS）。追加はすべて opt-in です。
+
+| 追加 | 使い方 |
+|---|---|
+| 衝突ワールド | `const w = engine.enableCollision({fixedDt:1/60})` → `w.addSphere({position, radius, layer, mask, trigger, continuous})`、`w.onEvent = e => ...` |
+| プロファイラ | `engine.enableProfiler()` → `engine.profiler.snapshot()` / `.toCSV()` |
+| 入力 | `engine.enableInput()`（`engine.input`（1.0 の簡易版）はそのまま残り、新機能は `engine.inputManager`） |
+| 音声 / デバッグ描画 / リソース | `engine.enableAudio()` / `engine.enableDebugDraw()` / `engine.resources`（`engine.assets` はそのまま） |
+| アニメ・パーティクル | `engine.addAnimator(anim)`, `engine.addSystem(particleSystem)` |
+| 物理の補間・停止・ハッシュ | `enablePhysics({interpolate:true})`, `physics.pause()`, `physics.stateHash()` |
+| マテリアル | `new Material({blending:'additive'})`（既定 `'normal'`） |
+| 統計 | `getStats()` に `uploadBytes, vertices, textureBytes, visibilityCulled` を追加（既存キーは不変） |
+
+挙動が変わる点: `InstancedMesh` のチャンク更新が「変更範囲だけの転送」になりました（見た目は同じ。画像一致をテスト済み）。`InstancedMesh.chunks[i]` に内部フィールド `dLo/dHi` が増えました（直接触っていなければ影響なし）。
+`massive-engine.js` / `.mjs`（ルート）と `dist/` は 1.1.0 に更新されています。
+
+
+# 1.1 → 1.2
+破壊的変更はありません。既存の `PhysicsWorld` / `CollisionWorld` は無変更で、`Engine` の既定動作も変わりません。
+- 剛体が必要なら `engine.enableRigidBodyPhysics(options)`（opt-in）。粒子のように大量の球を軽く動かすだけなら従来の `PhysicsWorld` のほうが数倍〜十数倍速い（docs/RIGID_BODY.md の比較表）。
+- `PhysicsWorld`→`RigidBodyWorld` の対応: `addBody({radius,...})`→`addBody({shape:'sphere',radius,...})`、境界は `bounds` ではなく static 平面/箱で作る、`mass` は必須でなく `density` から計算可。
+- 力・トルクは毎ステップクリアされる。ハンドルは世代付き（削除済みは null/false）。
+- `massive-engine.js` / `.mjs` と `dist/` は 1.2.0 に更新。

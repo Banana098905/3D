@@ -1,0 +1,104 @@
+{
+  "note": "SwiftShader software GL; not GPU performance",
+  "when": "2026-11-01T01:51:17.873Z",
+  "rows": [
+    {
+      "name": "1) 個別メッシュ 10,000 個（バッチ無し・基準）",
+      "objects": 10000,
+      "drawCalls": 10000,
+      "triangles": 120000,
+      "uploadBytesPerFrameMedian": 0,
+      "cpuFrameMs": {
+        "median": 11.4,
+        "p95": 31.1,
+        "max": 76.9
+      },
+      "nonBgPixels": 180570,
+      "gpuTimerSupported": true
+    },
+    {
+      "name": "2) InstancedMesh 10,000（静止）",
+      "objects": 10000,
+      "drawCalls": 3,
+      "triangles": 120000,
+      "uploadBytesPerFrameMedian": 0,
+      "cpuFrameMs": {
+        "median": 0.1,
+        "p95": 0.2,
+        "max": 0.9
+      },
+      "nonBgPixels": 180570,
+      "gpuTimerSupported": true
+    },
+    {
+      "name": "3) InstancedMesh 10,000（毎フレーム 1% だけ更新: 差分転送）",
+      "objects": 10000,
+      "drawCalls": 3,
+      "triangles": 120000,
+      "uploadBytesPerFrameMedian": 8000,
+      "cpuFrameMs": {
+        "median": 0.2,
+        "p95": 1.2,
+        "max": 5.8
+      },
+      "nonBgPixels": 180669,
+      "gpuTimerSupported": true
+    },
+    {
+      "name": "4) InstancedMesh 10,000（毎フレーム全部更新）",
+      "objects": 10000,
+      "drawCalls": 3,
+      "triangles": 120000,
+      "uploadBytesPerFrameMedian": 800000,
+      "cpuFrameMs": {
+        "median": 0.8,
+        "p95": 2.3,
+        "max": 4.6
+      },
+      "nonBgPixels": 199526,
+      "gpuTimerSupported": true
+    },
+    {
+      "name": "5) 静的バッチング（mergeGeometries で 1 メッシュ）",
+      "objects": 10000,
+      "drawCalls": 1,
+      "triangles": 120000,
+      "uploadBytesPerFrameMedian": 0,
+      "cpuFrameMs": {
+        "median": 0,
+        "p95": 0.2,
+        "max": 1.1
+      },
+      "nonBgPixels": 180570,
+      "gpuTimerSupported": true
+    },
+    {
+      "name": "6) InstancedMesh 100,000（静止・フラスタムカリング有効）",
+      "objects": 10000,
+      "drawCalls": 16,
+      "triangles": 786432,
+      "uploadBytesPerFrameMedian": 0,
+      "cpuFrameMs": {
+        "median": 0,
+        "p95": 0.2,
+        "max": 3.7
+      },
+      "nonBgPixels": 148439,
+      "gpuTimerSupported": true
+    },
+    {
+      "name": "7) パーティクル 20,000（加算合成・毎フレーム更新）",
+      "objects": 10000,
+      "drawCalls": 5,
+      "triangles": 720000,
+      "uploadBytesPerFrameMedian": 1600000,
+      "cpuFrameMs": {
+        "median": 1.1,
+        "p95": 4,
+        "max": 6.8
+      },
+      "nonBgPixels": 15221,
+      "gpuTimerSupported": true
+    }
+  ]
+}

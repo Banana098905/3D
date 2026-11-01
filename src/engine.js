@@ -12,8 +12,16 @@ import { AdaptiveQuality, ADAPTIVE_STEPS, QUALITY_PRESETS } from './quality.js';
 import { raycast, rayFromCamera } from './raycast.js';
 import { serializeScene, deserializeScene } from './scene-io.js';
 import { ParticleField } from './presets.js';
+import { CollisionWorld } from './collision/index.js';
+import { FixedTimestep } from './timestep.js';
+import { Profiler } from './profiler.js';
+import { InputManager } from './input.js';
+import { AudioSystem } from './audio.js';
+import { ResourceManager } from './resources.js';
+import { DebugDraw } from './debug.js';
+import { RigidBodyWorld } from './rigid/world.js';
 
-export const VERSION = '1.0.0';
+export const VERSION = '1.2.0';
 const LIVE = new WeakMap(); // canvas -> 使用中のエンジン（同一キャンバスの二重利用を防ぐ）
 const EASE = { linear: t => t, easeIn: t => t * t, easeOut: t => 1 - (1 - t) * (1 - t), easeInOut: t => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2 };
 
@@ -57,6 +65,8 @@ export class Engine extends Emitter {
     if (o.controls !== false) { this.controls = new OrbitControls(this.camera, Object.assign({ distance: 14, yaw: 0.68, pitch: 0.45 }, typeof o.controls === 'object' ? o.controls : {})); this.controls.attach(canvas); }
     else this.camera.lookAt(0, 0, 0);
     this.assets = new AssetManager(); this.jobs = new JobQueue(); this.physics = null; this.particleField = null;
+    // 1.1 追加（すべて opt-in。有効化するまで既存の挙動・コストは変わらない）
+    this.rigid = null; this.collision = null; this.collisionStep = null; this.profiler = null; this.inputManager = null; this.audio = null; this.debug = null; this._resources = null; this._animators = []; this._systems = [];
     this._updates = []; this._tweens = []; this._time = 0; this._lastStamp = 0; this._raf = 0;
     this.input = { keys: new Set(), pointer: { x: 0, y: 0, down: false }, isKeyDown: c => this.input.keys.has(c) };
     // 品質
@@ -152,7 +162,8 @@ export class Engine extends Emitter {
     this._unbind(); if (this.controls) this.controls.dispose();
     if (this.particleField) this.particleField.dispose();
     if (this.physics) this.physics.dispose ? this.physics.dispose() : 0;
-    this.physics = null; this.assets.dispose(); this.jobs.clear(); this._updates.length = 0; this._tweens.length = 0;
+    this.physics = null; if (this.rigid) { this.rigid.dispose(); this.rigid = null; } if (this.collision) { this.collision.dispose(); this.collision = null; } if (this.inputManager) this.inputManager.dispose(); if (this.audio) this.audio.dispose(); if (this.debug) { this.debug.dispose(); this.debug = null; } if (this._resources) this._resources.dispose(); this._animators.length = 0; this._systems.length = 0;
+    this.assets.dispose(); this.jobs.clear(); this._updates.length = 0; this._tweens.length = 0;
     this.renderer.dispose(); if (LIVE.get(this.canvas) === this) LIVE.delete(this.canvas);
     this.clearListeners(); this._onStats = null;
   }
@@ -171,6 +182,7 @@ export class Engine extends Emitter {
       const t1 = now(); this._renderMs = t1 - tu; this._cpuMs = t1 - t0; this._frameCount++;
       if (this._frameCount > 2) { this._frameStat.push(this._frameMs); this._cpuStat.push(this._cpuMs); this._updStat.push(this._updateMs); this._rndStat.push(this._renderMs); }
       if (this.adaptive.enabled && this._frameCount > 10 && this.adaptive.tick(this._frameMs, this._cpuMs, this.renderer.stats.gpuMs, t1)) { this._applyAdaptive(); }
+      if (this.profiler) this._profileFrame(t0, tu, t1);
       this._publishStats();
       if (this._onStats) { try { this._onStats(this.stats); } catch (e) { this._reportError(new Error('onStats callback failed: ' + (e && e.message ? e.message : e)), 'onStats'); } }
     } catch (e) {
@@ -187,7 +199,26 @@ export class Engine extends Emitter {
     if (this.physics) {
       if (this.physics.isWorker) this.physics.update(dt); else { this.physics.advance(dt); this.physics.syncTransforms(); }
     }
+    if (this.rigid) { const r = this.rigid, p = this.profiler; if (p) p.begin('rigid'); r.advance(dt); r.syncTransforms(); if (p) { p.end('rigid'); const s = r.stats; p.gauge('rigidBodies', s.bodies); p.gauge('rigidActive', s.activeBodies); p.gauge('rigidContacts', s.contactPoints); p.gauge('rigidSolverMs', s.solverMs, { unit: 'ms' }); } }
+    if (this.collision) this._stepCollision(dt);
+    if (this._animators.length) for (const a of this._animators) a.update(dt);
+    if (this._systems.length) for (const sys of this._systems) sys.update(dt);
     this.emit('update', { dt, time: this._time });
+  }
+  _stepCollision(dt) {
+    const prof = this.profiler; if (prof) prof.begin('collision');
+    this.collisionStep.update(dt, fdt => this.collision.step(fdt));
+    if (prof) { prof.end('collision'); const s = this.collision.stats; prof.gauge('collisionPairs', s.candidatePairs || 0); prof.gauge('collisionContacts', s.contacts || 0); }
+  }
+  _profileFrame(t0, tu, t1) {
+    const p = this.profiler, r = this.renderer.stats; p.record('frame', this._frameMs, { unit: 'ms', kind: 'time' }); p.record('cpu', t1 - t0, { unit: 'ms', kind: 'time' });
+    p.record('update', tu - t0, { unit: 'ms', kind: 'time' }); p.record('render', t1 - tu, { unit: 'ms', kind: 'time' });
+    if (r.gpuTimer) p.record('gpu', r.gpuMs, { unit: 'ms', kind: 'time' }); else p.unsupported('gpu', 'EXT_disjoint_timer_query_webgl2 が使えない環境のため GPU 時間は計測できません');
+    p.gauge('drawCalls', r.drawCalls); p.gauge('triangles', r.triangles); p.gauge('instances', r.instances); p.gauge('uploadBytes', r.uploadBytes);
+    if (this.physics && this.physics.stats) p.gauge('physicsStepMs', this.physics.stats.stepMs || 0, { unit: 'ms' });
+    const heap = (typeof performance !== 'undefined' && performance.memory) ? performance.memory.usedJSHeapSize / 1048576 : null;
+    if (heap !== null) p.gauge('jsHeapMB', heap, { unit: 'MB' }); else p.unsupported('jsHeapMB', 'performance.memory が使えない環境');
+    p.endFrame();
   }
   _shadowsOn() { const s = ADAPTIVE_STEPS[this.adaptive.enabled ? this.adaptive.level : 0]; return this.quality.shadows && s.shadow > 0 && this.renderer.shadowSupported; }
   _renderFrame() {
@@ -226,9 +257,11 @@ export class Engine extends Emitter {
       cpuMs: this._cpuMs, updateMs: this._updateMs, renderMs: this._renderMs, frameP95Ms: this._frameStat.percentile(0.95), cpuP95Ms: this._cpuStat.percentile(0.95), frameMaxMs: this._frameStat.max(),
       gpuMs: r.gpuMs, gpuTimerSupported: r.gpuTimer, drawCalls: r.drawCalls, shadowDrawCalls: r.shadowDrawCalls, triangles: r.triangles, instances: r.instances, visibleObjects: r.visibleObjects, culledObjects: r.culledObjects,
       visibleChunks: r.visibleChunks, culledChunks: r.culledChunks, shadows: r.shadows, programs: r.programs, geometries: r.geometries, textures: r.textures, gpuBytes: r.gpuBytes, jsHeapMB: jsHeap,
+      rigidBodies: this.rigid ? this.rigid.stats.bodies : 0, rigidStepMs: this.rigid ? this.rigid.stats.stepMs : 0,
       bodies: p.bodies || 0, physicsSubsteps: p.substeps || 0, physicsDroppedTime: p.droppedTime || 0, physicsOnWorker: !!(this.physics && this.physics.isWorker),
       renderScale: this.quality.renderScale * ADAPTIVE_STEPS[this.adaptive.enabled ? this.adaptive.level : 0].scale, qualityLevel: this.adaptive.level, canvasWidth: this.canvas.width, canvasHeight: this.canvas.height,
-      initMs: this._initMs, frames: this._frameCount, jobsPending: this.jobs.pending
+      initMs: this._initMs, frames: this._frameCount, jobsPending: this.jobs.pending,
+      uploadBytes: r.uploadBytes, vertices: r.vertices, textureBytes: r.textureBytes, visibilityCulled: r.visibilityCulled
     };
   }
   getStats() { if (!this.stats || !('fps' in this.stats)) this._publishStats(); return Object.assign({}, this.stats); }
@@ -337,7 +370,37 @@ export class Engine extends Emitter {
     o.onWarning = o.onWarning || (m => this.emit('warning', { message: m }));
     this.physics = new PhysicsWorld(o); return this.physics;
   }
+  /** 1.2: 3D 剛体物理（RigidBodyWorld）。既存の enablePhysics() とは独立に併用できる。固定タイムステップ・Node 同期は自動。 */
+  enableRigidBodyPhysics(options = {}) {
+    this._assertAlive(); if (this.rigid) throw new MassiveEngineError('剛体物理は既に有効です。disableRigidBodyPhysics() を先に呼んでください。', 'E_RIGID_EXISTS');
+    const o = Object.assign({}, options); o.onWarning = o.onWarning || (m => this.emit('warning', { message: m }));
+    this.rigid = new RigidBodyWorld(o); return this.rigid;
+  }
+  disableRigidBodyPhysics() { if (this.rigid) { this.rigid.dispose(); this.rigid = null; } return this; }
   disablePhysics() { if (this.physics) { if (this.physics.dispose) this.physics.dispose(); this.physics = null; } return this; }
+
+  /* ---------------- 1.1 追加機能（opt-in） ---------------- */
+  /** 衝突判定ワールド（CollisionWorld）を有効化し、固定タイムステップで自動的に step する。 */
+  enableCollision(options = {}) {
+    this._assertAlive(); if (this.collision) throw new MassiveEngineError('衝突ワールドは既に有効です。', 'E_COLLISION_EXISTS');
+    const o = Object.assign({}, options), ts = { fixedDt: o.fixedDt, maxSubSteps: o.maxSubSteps, timeScale: o.timeScale }; delete o.fixedDt; delete o.maxSubSteps; delete o.timeScale;
+    for (const k of Object.keys(ts)) if (ts[k] === undefined) delete ts[k];
+    o.onWarning = o.onWarning || (m => this.emit('warning', { message: m }));
+    this.collision = new CollisionWorld(o); this.collisionStep = new FixedTimestep(ts); return this.collision;
+  }
+  disableCollision() { if (this.collision) { this.collision.dispose(); this.collision = null; this.collisionStep = null; } return this; }
+  /** プロファイラを有効化（CPU/更新/描画/GPU(非対応なら unsupported)/ドローコール等を集計）。 */
+  enableProfiler(options = {}) { this._assertAlive(); if (!this.profiler) this.profiler = new Profiler(options); this.profiler.enabled = true; return this.profiler; }
+  disableProfiler() { if (this.profiler) this.profiler.enabled = false; return this; }
+  enableInput(options = {}) { this._assertAlive(); if (!this.inputManager) this.inputManager = new InputManager(Object.assign({ element: this.canvas }, options)); return this.inputManager; }
+  enableAudio(options = {}) { this._assertAlive(); if (!this.audio) this.audio = new AudioSystem(options); return this.audio; }
+  /** デバッグ描画（別の 2D オーバーレイ canvas。既定 OFF: debug.enabled = true で表示）。 */
+  enableDebugDraw(options = {}) { this._assertAlive(); if (!this.debug) { this.debug = new DebugDraw(Object.assign({ canvas: this.canvas, camera: this.camera }, options)); this.on('afterRender', () => { if (this.debug) this.debug.flush(); }); } return this.debug; }
+  /** リソースマネージャ（this.assets 互換 + 重複排除・OBJ・マテリアル共有）。初回アクセスで作られる。 */
+  get resources() { if (!this._resources) this._resources = new ResourceManager(); return this._resources; }
+  addAnimator(a) { this._animators.push(a); return () => { const i = this._animators.indexOf(a); if (i >= 0) this._animators.splice(i, 1); }; }
+  /** update(dt) を持つ任意のシステム（ParticleSystem 等）を毎フレーム更新対象に登録する。 */
+  addSystem(sys) { if (!sys || typeof sys.update !== 'function') throw new TypeError('addSystem: update(dt) を持つオブジェクトが必要です。'); this._systems.push(sys); return () => { const i = this._systems.indexOf(sys); if (i >= 0) this._systems.splice(i, 1); }; }
 
   /* ---------------- シーンの保存・読込 ---------------- */
   saveScene() {

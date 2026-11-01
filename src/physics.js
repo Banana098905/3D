@@ -64,7 +64,8 @@ const DEFAULTS = {
   fixedTimeStep: 1 / 60, maxSubSteps: 4, stepBudgetMs: 0, maxCandidatePairs: 20000000,
   cellSize: 0, maxReach: 1, planar: false, iterations: 1, maxCells: 2097152,
   restitution: 0.2, friction: 0.0, boundsRestitution: 0.3, positionCorrection: 0.78, slop: 0.001,
-  damping: 0, maxSpeed: 100, precomputeNeighbors: true, timeScale: 1, onContact: null, onWarning: null
+  damping: 0, maxSpeed: 100, precomputeNeighbors: true, timeScale: 1, onContact: null, onWarning: null,
+  interpolate: false // true: 描画用の位置を「前ステップ」と「現在」の間で補間する（固定刻みと描画フレームのずれによるカクつきを減らす）
 };
 
 export class PhysicsWorld {
@@ -79,6 +80,7 @@ export class PhysicsWorld {
     this.shape = new Uint8Array(0); this.alive = new Uint8Array(0);
     this.free = []; this.bodyNode = []; this.instanceBindings = [];
     this._ensure(256);
+    this.paused = false; this.alpha = 0; this.stepCount = 0; this.prevPos = null; this._interp = null;
     this.acc = 0; this.time = 0; this.droppedTime = 0; this.truncatedSteps = 0; this.invalidBodies = 0;
     this._listsDirty = true; this._staticDirty = true; this._built = false;
     this.dynGrid = new UniformGrid(); this.statGrid = new UniformGrid();
@@ -130,6 +132,7 @@ export class PhysicsWorld {
     this.rest[id] = d.restitution === undefined ? this.options.restitution : d.restitution;
     this.fric[id] = d.friction === undefined ? this.options.friction : d.friction;
     this.bodyNode[id] = d.node || null;
+    if (this.prevPos && this.prevPos.length >= (id + 1) * 3) { this.prevPos[i3] = p[0]; this.prevPos[i3 + 1] = p[1]; this.prevPos[i3 + 2] = p[2]; }
     this.aliveCount++; this._listsDirty = true; if (this.invMass[id] === 0) this._staticDirty = true;
     return id;
   }
@@ -140,7 +143,7 @@ export class PhysicsWorld {
   }
   _check(i) { if (!(i >= 0 && i < this.count) || !this.alive[i]) throw new RangeError('PhysicsWorld: 無効な物体ID ' + i); }
   isAlive(i) { return i >= 0 && i < this.count && this.alive[i] === 1; }
-  setPosition(i, x, y, z) { this._check(i); const j = i * 3; this.pos[j] = x; this.pos[j + 1] = y; this.pos[j + 2] = z; if (this.invMass[i] === 0) this._staticDirty = true; return this; }
+  setPosition(i, x, y, z) { this._check(i); const j = i * 3; this.pos[j] = x; this.pos[j + 1] = y; this.pos[j + 2] = z; if (this.prevPos && this.prevPos.length > j + 2) { this.prevPos[j] = x; this.prevPos[j + 1] = y; this.prevPos[j + 2] = z; } if (this.invMass[i] === 0) this._staticDirty = true; return this; }
   setVelocity(i, x, y, z) { this._check(i); const j = i * 3; this.vel[j] = x; this.vel[j + 1] = y; this.vel[j + 2] = z; return this; }
   getPosition(i, out = [0, 0, 0]) { this._check(i); const j = i * 3; out[0] = this.pos[j]; out[1] = this.pos[j + 1]; out[2] = this.pos[j + 2]; return out; }
   getVelocity(i, out = [0, 0, 0]) { this._check(i); const j = i * 3; out[0] = this.vel[j]; out[1] = this.vel[j + 1]; out[2] = this.vel[j + 2]; return out; }
@@ -154,8 +157,14 @@ export class PhysicsWorld {
   /** 物体 firstBody..+count-1 を InstancedMesh のインスタンス instanceStart.. に対応づける。 */
   bindInstanced(mesh, firstBody, count, instanceStart = 0) { this.instanceBindings.push({ mesh, firstBody, count, instanceStart }); return this; }
   unbindInstanced(mesh) { this.instanceBindings = this.instanceBindings.filter(b => b.mesh !== mesh); }
+  /** 描画に使う位置配列。interpolate 有効時は前ステップと現在の間を alpha で補間した値（物理の状態そのものは変えない）。 */
+  _renderPos() {
+    if (!this.options.interpolate || !this.prevPos || !(this.alpha > 0)) return this.pos;
+    const n = this.count * 3; if (!this._interp || this._interp.length < n) this._interp = new Float32Array(Math.max(n, this.pos.length));
+    const a = this.alpha, p = this.pos, q = this.prevPos, o = this._interp; for (let k = 0; k < n; k++) o[k] = q[k] + (p[k] - q[k]) * a; return o;
+  }
   syncTransforms() {
-    const pos = this.pos;
+    const pos = this._renderPos();
     for (let i = 0; i < this.count; i++) {
       const n = this.bodyNode[i];
       if (n && this.alive[i]) { const j = i * 3; if (n.position[0] !== pos[j] || n.position[1] !== pos[j + 1] || n.position[2] !== pos[j + 2]) { n.position[0] = pos[j]; n.position[1] = pos[j + 1]; n.position[2] = pos[j + 2]; n.markDirty(); } }
@@ -380,6 +389,7 @@ export class PhysicsWorld {
   /** 1ステップ(固定dt)を進める。通常は advance() を使う。 */
   step(dt) {
     const t0 = now(), o = this.options, pos = this.pos, vel = this.vel, ext = this.ext;
+    if (o.interpolate) { if (!this.prevPos || this.prevPos.length < pos.length) this.prevPos = new Float32Array(pos.length); this.prevPos.set(pos); }
     if (this._listsDirty || !this._built) this._rebuildLists();
     const g = o.gravity, gx = g[0] * dt, gy = g[1] * dt, gz = g[2] * dt, damp = o.damping > 0 ? Math.exp(-o.damping * dt) : 1, maxS2 = o.maxSpeed * o.maxSpeed;
     const bmin = o.bounds.min, bmax = o.bounds.max, walls = o.walls, br = o.boundsRestitution;
@@ -421,7 +431,7 @@ export class PhysicsWorld {
     const s = this.stats;
     s.integrateMs += t1 - t0; s.gridMs += t2 - t1; s.collisionMs += t3 - t2; s.stepMs += t3 - t0;
     s.candidatePairs = cand; s.overlaps = this._overlaps; s.activeCells = this.dynGrid.activeCount; s.truncated = this._truncated;
-    this.time += dt;
+    this.time += dt; this.stepCount++;
     return s;
   }
 
@@ -429,7 +439,7 @@ export class PhysicsWorld {
   advance(dt) {
     const o = this.options, s = this.stats;
     s.integrateMs = 0; s.gridMs = 0; s.collisionMs = 0; s.stepMs = 0; s.substeps = 0;
-    if (!(dt > 0) || !isFinite(dt)) { this._fillStats(); return 0; }
+    if (this.paused || !(dt > 0) || !isFinite(dt)) { this._fillStats(); return 0; }
     this.acc += dt * o.timeScale;
     const fixed = o.fixedTimeStep, start = now();
     let steps = 0;
@@ -438,12 +448,23 @@ export class PhysicsWorld {
       if (o.stepBudgetMs > 0 && now() - start > o.stepBudgetMs) break;
     }
     if (this.acc >= fixed) { this.droppedTime += this.acc; this.acc = 0; } // 追いつけない分は捨てて固まりを防ぐ
-    s.substeps = steps; this._fillStats();
+    s.substeps = steps; this.alpha = this.acc / fixed; this._fillStats();
     return steps;
   }
   _fillStats() {
     const s = this.stats; s.bodies = this.aliveCount; s.oversizeBodies = this.nOvDyn + this.nOvStat; s.staticBodies = this.nStatSmall + this.nOvStat;
     s.cells = this.dynGrid.total; s.cellSize = this.cell; s.droppedTime = this.droppedTime;
+  }
+
+  /** 一時停止/再開。停止中は advance() が何も進めない（step() の直接呼び出しは可能）。 */
+  pause() { this.paused = true; return this; }
+  resume() { this.paused = false; return this; }
+  /** 状態の指紋（位置・速度・生死のハッシュ, FNV-1a 32bit）。同じ初期条件と操作から同じ結果になるかの検証・リプレイ照合用。 */
+  stateHash() {
+    let h = 0x811c9dc5; const n = this.count;
+    const feed = (u8) => { for (let k = 0; k < u8.length; k++) { h ^= u8[k]; h = Math.imul(h, 0x01000193); } };
+    feed(new Uint8Array(this.pos.buffer, this.pos.byteOffset, n * 12)); feed(new Uint8Array(this.vel.buffer, this.vel.byteOffset, n * 12)); feed(this.alive.subarray(0, n));
+    return (h >>> 0).toString(16).padStart(8, '0');
   }
 
   /** O(N) のレイキャスト。最も近い物体 {index, distance, point, normal} を返す。 */

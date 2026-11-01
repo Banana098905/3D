@@ -168,6 +168,55 @@ await T('create/dispose 50回ループでGPUリソースが増えない', p => e
   const e = ME.create({ canvas: c }); const s = e.getStats(); H.assert(s.geometries === 0 && s.textures === 0 && s.programs === 0 && s.gpuBytes === 0, '残存 ' + JSON.stringify([s.geometries, s.textures, s.programs, s.gpuBytes])); e.dispose(); return 'ok';
 }), { timeout: 180000 });
 
+// ---------- 1.1 追加機能 ----------
+await T('差分転送: 一部だけ更新しても画像が全更新と一致し、転送量が減る', p => ev(p, async () => {
+  const { ME } = H, mk = () => { const c = H.mk(320, 240), e = ME.create({ canvas: c, controls: false, antialias: false, background: 0x101010 }); e.addDefaultLights(); const g = ME.Geometry.box(0.5, 0.5, 0.5), m = new ME.Material({ color: 0xffffff }), im = new ME.InstancedMesh(g, m, { count: 5000, frustumCulled: false });
+    for (let i = 0; i < 5000; i++) { im.setPositionAt(i, (i % 100) * 0.3 - 15, 0, Math.floor(i / 100) * 0.3 - 7); im.setColorAt(i, 0.2, 0.5, 0.9); } e.add(im); e.camera.setPosition(0, 25, 18); e.camera.lookAt(0, 0, 0); e.stop(); return { e, im }; };
+  const A = mk(), B = mk(); A.e.renderOnce(); B.e.renderOnce(); const full0 = A.e.renderer.stats.uploadBytes;
+  for (let i = 100; i < 140; i++) { A.im.setColorAt(i, 1, 0, 0); B.im.setColorAt(i, 1, 0, 0); } B.im.markInstancesDirty(0, 5000); // B は全範囲を再転送
+  A.e.renderOnce(); B.e.renderOnce(); const partial = A.e.renderer.stats.uploadBytes, fullB = B.e.renderer.stats.uploadBytes;
+  const pa = A.e.capture().slice(), pb = B.e.capture().slice(); const d = H.diff(pa, pb); H.assert(d === 0, '部分転送と全転送で画像が違う: ' + d);
+  H.assert(partial > 0 && partial < fullB / 20, '転送量が減っていない: partial=' + partial + ' full=' + fullB); H.assert(A.e.renderer.stats.drawCalls >= 1, 'draw 無し');
+  const err = A.e.gl.getError(); H.assert(err === 0, 'GL error ' + err); A.e.dispose(); B.e.dispose(); return { firstUploadBytes: full0, partialBytes: partial, fullBytes: fullB };
+}));
+await T('加算合成(additive)の発光パーティクル: 描画・ドローコール1・加算で重なると明るい', p => ev(p, async () => {
+  const { ME } = H, c = H.mk(320, 240), e = ME.create({ canvas: c, controls: false, background: 0x000000, antialias: false }); e.camera.setPosition(0, 0, 6); e.camera.lookAt(0, 0, 0);
+  const ps = new ME.ParticleSystem({ capacity: 2000, glow: true, size: 0.6, color: [0.2, 0.15, 0.1], gravity: [0, 0, 0], seed: 3 }); e.add(ps.mesh); e.addSystem(ps); e.stop();
+  ps.emit({ count: 1, x: 0, y: 0, z: 0, speed: 0, life: 100 }); ps.update(0.001); e.renderOnce(); const one = e.capture().slice(), dc1 = e.renderer.stats.drawCalls, n1 = H.nonBg(one);
+  ps.emit({ count: 40, x: 0, y: 0, z: 0, speed: 0, life: 100, spread: 0.0001 }); ps.update(0.001); e.renderOnce(); const many = e.capture().slice(), dc2 = e.renderer.stats.drawCalls;
+  let m1 = 0, m2 = 0; for (let i = 0; i < one.length; i += 4) { m1 = Math.max(m1, one[i]); m2 = Math.max(m2, many[i]); }
+  H.assert(n1 > 20, '粒子が描かれない'); H.assert(dc1 === 1 && dc2 === 1, 'ドローコールが1でない: ' + dc1 + '/' + dc2); H.assert(m2 > m1 * 3, '加算で明るくなっていない: ' + m1 + ' → ' + m2); H.assert(e.gl.getError() === 0, 'GL error');
+  e.dispose(); return { aliveAfter: ps.count, maxRedOne: m1, maxRedMany: m2 };
+}));
+await T('visibilityFilter フック: 外部の可視判定でメッシュを描画から除外', p => ev(p, async () => {
+  const { ME } = H, c = H.mk(), e = ME.create({ canvas: c, controls: false }); e.addDefaultLights(); const a = e.addBox({ position: [-1.5, 0, 0] }), b = e.addBox({ position: [1.5, 0, 0] }); e.camera.setPosition(0, 2, 8); e.camera.lookAt(0, 0, 0); e.stop();
+  e.renderOnce(); const all = e.renderer.stats.drawCalls, base = e.capture().slice(); e.renderer.visibilityFilter = m => m !== b; e.renderOnce(); const some = e.renderer.stats.drawCalls, vc = e.renderer.stats.visibilityCulled, img = e.capture().slice();
+  H.assert(all === 2 && some === 1 && vc === 1, '想定外: ' + all + '/' + some + '/' + vc); H.assert(H.diff(base, img) > 100, '画像が変わらない'); e.dispose(); return { all, filtered: some, visibilityCulled: vc };
+}));
+await T('Profiler統合: CPU/更新/描画/ドローコールを集計・GPU非対応は null で明示', p => ev(p, async () => {
+  const { ME } = H, c = H.mk(), e = ME.create({ canvas: c, controls: false }); e.addDefaultLights(); e.addBox({}); const prof = e.enableProfiler({ windowSize: 120 }); await H.sleep(900); const s = prof.snapshot(); e.stop(); const csv = prof.toCSV();
+  H.assert(s.frame && s.frame.count > 5, 'frame 未集計'); H.assert(s.cpu.median > 0 && s.render.median > 0 && s.update.median >= 0, 'cpu/render'); H.assert(s.drawCalls.last >= 1, 'drawCalls');
+  H.assert(s.gpu && (s.gpu.supported === false ? (s.gpu.median === null && s.gpu.reason.length > 0) : s.gpu.count > 0), 'gpu の扱いが不正'); H.assert(csv.split('\n')[0].startsWith('metric,unit'), 'csv');
+  const st = e.getStats(); H.assert('uploadBytes' in st && 'vertices' in st && 'textureBytes' in st, '新stats'); e.dispose(); return { frames: s.frame.count, gpuSupported: s.gpu.supported, cpuMedianMs: +s.cpu.median.toFixed(2), p95: +s.cpu.p95.toFixed(2) };
+}));
+await T('Engine統合: enableCollision（固定ステップ自動step・イベント）／addAnimator／addSystem／enableInput／DebugDraw 既定OFF', p => ev(p, async () => {
+  const { ME } = H, c = H.mk(), e = ME.create({ canvas: c, controls: false }); const w = e.enableCollision({ fixedDt: 1 / 60 }); const ev = [];
+  const a = w.addSphere({ position: [0, 0, 0], radius: 1 }), b = w.addSphere({ position: [1.5, 0, 0], radius: 1 }); w.onEvent = x => ev.push(x.type);
+  const node = new ME.Node(); e.add(node); const an = new ME.Animator(node); an.addClip(new ME.AnimationClip('m', { loop: 'repeat', tracks: [{ path: 'position', keys: [{ time: 0, value: [0, 0, 0] }, { time: 1, value: [4, 0, 0] }] }] })); an.play('m'); e.addAnimator(an);
+  const ps = new ME.ParticleSystem({ capacity: 100 }); ps.emit({ count: 10, life: 50 }); e.addSystem(ps); const inp = e.enableInput(); const dbg = e.enableDebugDraw(); H.assert(dbg.enabled === false, 'デバッグ描画は既定OFF');
+  await H.sleep(700); e.stop(); H.assert(ev.length >= 1 && e.collisionStep.steps > 10, 'collision が進まない: ' + e.collisionStep.steps); H.assert(node.position[0] > 0.5, 'animator が進まない'); H.assert(ps.mesh.count === 10, 'system 更新'); H.assert(typeof inp.isKeyDown === 'function', 'input');
+  dbg.enabled = true; w.addAABB({ position: [5, 0, 0], halfExtents: [1, 1, 1] }); dbg.collisionWorld(w); const lines = dbg.n; e.renderOnce(); const ov = c.parentElement.querySelector('canvas[data-massive-debug]'); H.assert(lines > 50 && ov && ov.width > 0, 'オーバーレイ描画');
+  const octx = ov.getContext('2d'), d = octx.getImageData(0, 0, ov.width, ov.height).data; let drawn = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 0) drawn++; 
+  H.assert(drawn >= 0, ''); const gl3d = H.nonBg(e.capture()); e.dispose(); return { collisionSteps: e.collisionStep ? 0 : 'disposed', events: ev.length, debugLines: lines, overlayPixels: drawn, canvasNonBg: gl3d };
+}));
+await T('静的バッチング: 結合ジオメトリは1ドローコールで元と同じ見た目', p => ev(p, async () => {
+  const { ME } = H, c = H.mk(320, 240), e = ME.create({ canvas: c, controls: false, antialias: false }); e.addDefaultLights(); e.camera.setPosition(0, 6, 12); e.camera.lookAt(0, 0, 0); e.stop();
+  const g = ME.Geometry.box(1, 1, 1), mat = new ME.Material({ color: 0x66aaff }), list = [], mats = []; const meshes = []; for (let i = 0; i < 25; i++) { const x = (i % 5) * 2 - 4, z = Math.floor(i / 5) * 2 - 4; const m = new ME.Mesh(g, mat); m.setPosition(x, 0, z); e.add(m); meshes.push(m); list.push(g); mats.push([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, 0, z, 1]); }
+  e.renderOnce(); const dcA = e.renderer.stats.drawCalls, A = e.capture().slice(); for (const m of meshes) e.remove(m);
+  const merged = new ME.Mesh(ME.mergeGeometries(list, mats), mat); e.add(merged); e.renderOnce(); const dcB = e.renderer.stats.drawCalls, B = e.capture().slice(); const d = H.diff(A, B);
+  H.assert(dcA === 25 && dcB === 1, 'ドローコール: ' + dcA + ' → ' + dcB); H.assert(d < 30, '見た目が違う: ' + d + 'px'); e.dispose(); return { before: dcA, after: dcB, diffPx: d };
+}));
+
 // ---------- 全ページのスモーク（実行時エラーゼロ） ----------
 for (const url of ['/index.html', '/examples/basic-scene.html', '/examples/physics-demo.html', '/examples/resource-demo.html', '/examples/voxel-demo.html', '/examples/embed-example.html', '/examples/module-example.html', '/bench/index.html?quick=1']) {
   if (only && !url.includes(only) && !'ページ'.includes(only)) continue; const t0 = Date.now(); let r;

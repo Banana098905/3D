@@ -1,0 +1,86 @@
+{
+  "node": "v22.23.4",
+  "rows": [
+    {
+      "n": 8,
+      "brute": 0.0484,
+      "bruteBroadphaseMs": 2.8334,
+      "hash": 0.0368,
+      "hashBroadphaseMs": 10.8098,
+      "tree": 0.0289,
+      "treeBroadphaseMs": 4.3778
+    },
+    {
+      "n": 16,
+      "brute": 0.0192,
+      "bruteBroadphaseMs": 0.9148,
+      "hash": 0.0352,
+      "hashBroadphaseMs": 8.8161,
+      "tree": 0.0217,
+      "treeBroadphaseMs": 3.4655
+    },
+    {
+      "n": 24,
+      "brute": 0.0091,
+      "bruteBroadphaseMs": 0.423,
+      "hash": 0.0151,
+      "hashBroadphaseMs": 1.7956,
+      "tree": 0.0163,
+      "treeBroadphaseMs": 1.0241
+    },
+    {
+      "n": 32,
+      "brute": 0.0172,
+      "bruteBroadphaseMs": 0.6434,
+      "hash": 0.0208,
+      "hashBroadphaseMs": 2.3015,
+      "tree": 0.0225,
+      "treeBroadphaseMs": 1.3438
+    },
+    {
+      "n": 48,
+      "brute": 0.0354,
+      "bruteBroadphaseMs": 1.4032,
+      "hash": 0.0293,
+      "hashBroadphaseMs": 2.8195,
+      "tree": 0.0345,
+      "treeBroadphaseMs": 2.5859
+    },
+    {
+      "n": 64,
+      "brute": 0.0272,
+      "bruteBroadphaseMs": 2.3827,
+      "hash": 0.031,
+      "hashBroadphaseMs": 3.9748,
+      "tree": 0.0346,
+      "treeBroadphaseMs": 3.7789
+    },
+    {
+      "n": 96,
+      "brute": 0.0389,
+      "bruteBroadphaseMs": 5.316,
+      "hash": 0.0384,
+      "hashBroadphaseMs": 5.1952,
+      "tree": 0.0573,
+      "treeBroadphaseMs": 7.0631
+    },
+    {
+      "n": 128,
+      "brute": 0.0702,
+      "bruteBroadphaseMs": 11.9016,
+      "hash": 0.0586,
+      "hashBroadphaseMs": 7.8596,
+      "tree": 0.0953,
+      "treeBroadphaseMs": 12.887
+    },
+    {
+      "n": 256,
+      "brute": 0.2482,
+      "bruteBroadphaseMs": 58.0198,
+      "hash": 0.1186,
+      "hashBroadphaseMs": 17.1776,
+      "tree": 0.2114,
+      "treeBroadphaseMs": 35.606
+    }
+  ]
+}

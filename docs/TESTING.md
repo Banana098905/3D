@@ -1,6 +1,6 @@
 # テスト手順と結果
 
-最終実行: 単体 66/66 PASS、ブラウザ 28/28 PASS。実行環境は下記のとおりで、**あなたの端末での結果ではありません**。
+最終実行（1.1.0）: 単体 134/134 PASS、ブラウザ 34/34 PASS（下の表は 1.0 時点の 28 件。1.1 で追加した 6 件は末尾の節）。実行環境は下記のとおりで、**あなたの端末での結果ではありません**。
 
 ## 実行環境（この結果を取った環境）
 - Linux コンテナ、CPU 2 コア（Intel Xeon 2.8GHz）、Node v22.23.4
@@ -97,3 +97,26 @@ npm run bench:physics              # 全部（約 1 分）。--quick で短縮�
 3. `examples/resource-demo.html` で stop／dispose／再生成、コンテキスト喪失ボタンを押し、`GPU転送` や GPU リソース数が増え続けないことを確認。
 4. 長時間: `index.html` の 10,000 個を 30 分放置し、JS ヒープ（Chromium）と FPS が劣化しないか確認。
 5. BLOCKCRAFT: [統合ガイド](BLOCKCRAFT統合ガイド.md)のチェックリスト。
+
+
+---
+# 1.1 で追加したテスト
+## 単体テスト（`tests/unit/`、Node のみ）
+| ファイル | 件数 | 内容 |
+|---|---|---|
+| collision-narrow.test.js | 形状の組み合わせ全て | 独立実装の GJK／サポート関数／レイマーチ／球の経路ステップとの照合（不一致 0）、掃引・TOI |
+| collision-world.test.js | 広域の完全性 | 総当たりとの比較（漏れ 0・余分 0・重複 0）を 7 シーンで（追加・削除・移動・無効化・スロット再利用込み）、イベント順序の決定性、レイヤー/トリガー、CCD のすり抜け有無、ハンドルの世代 |
+| modules-1.1.test.js | 19 件 | FixedTimestep（揺れる dt でも同じ総ステップ・上限・停止・timeScale）、Interpolator、PhysicsWorld の決定性（同操作で同ハッシュ・補間の有無でも一致・停止）、StatWindow（既知データで P95/P99）、Profiler、アニメ（補間・イージング・イベント・ループ・状態）、パーティクル（容量・寿命・決定性・配列再利用）、入力（偽イベント・ゲームパッド）、音声（偽 AudioContext）、OBJ/マージ/重複排除/fetch 共有、デバッグ描画（OFF で何もしない・背面クリップ）、差分転送の範囲、Frustum と参照実装の照合 |
+
+実行: `npm test`（約 10 秒）。
+## ブラウザテスト（`npm run test:browser`、Chromium + SwiftShader）— 追加 6 件
+差分転送（画像一致＋転送量 400,000B→3,200B）／加算合成パーティクル（ドローコール 1・重なると明るい）／`visibilityFilter`／Profiler 統合（GPU 項目の扱い）／Engine 統合（衝突・アニメ・システム・入力・デバッグオーバーレイ既定 OFF）／静的バッチング（25→1 ドローコール・画像差 0px）。
+このテストで **ParticleSystem.update の `i++` 抜け（全粒子が 1 回の更新で消える）を発見・修正**しました（単体テストの当初の断言が緩く見逃していたため、1 ステップだけ進むことを確かめる単体テストを追加済み）。
+
+## 実行していないもの
+Firefox / Safari / 実 GPU / モバイル、実音声出力、実タッチ・実ゲームパッド、1 時間以上の連続実行。
+
+
+## 1.2（剛体）
+`npm test` で単体 194 件（既存 134 + `tests/unit/rigid.test.js` 60）。ブラウザテストは 1.2 では追加しておらず、剛体の描画連携（Node 同期）は単体テストの Node モックのみで確認しています（実ブラウザでの目視確認は未実施）。
+ベンチ: `node --expose-gc bench/rigid-bench.mjs --json bench/results/rigid-v1.2-node.json`、`node bench/rigid-broadphase-threshold.mjs`。
